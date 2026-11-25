@@ -239,7 +239,26 @@ async function loginAccount(request, env, origin) {
 async function getCurrentAccount(request, env, origin) {
   const account = await authenticateRequest(request, env);
   if (!account) return json({ ok: false, error: 'Сесія завершилася. Увійди знову.' }, 401, origin);
-  return json({ ok: true, user: { id: account.id, email: account.email, fullName: account.fullName } }, 200, origin);
+  const now = Math.floor(Date.now() / 1000);
+  const subscription = await env.DB.prepare('SELECT plan_key, status, started_at, expires_at, order_id FROM subscriptions WHERE account_id = ?').bind(account.id).first();
+  const latestOrder = await env.DB.prepare('SELECT order_id, plan_key, status, created_at FROM payment_orders WHERE account_id = ? ORDER BY created_at DESC LIMIT 1').bind(account.id).first();
+  let publicSubscription = null;
+  if (subscription) {
+    const active = subscription.status === 'active' && (subscription.expires_at == null || Number(subscription.expires_at) > now);
+    publicSubscription = {
+      plan: subscription.plan_key,
+      status: active ? 'active' : 'expired',
+      startedAt: Number(subscription.started_at),
+      expiresAt: subscription.expires_at == null ? null : Number(subscription.expires_at),
+      orderId: subscription.order_id
+    };
+  }
+  return json({
+    ok: true,
+    user: { id: account.id, email: account.email, fullName: account.fullName },
+    subscription: publicSubscription,
+    latestOrder: latestOrder ? { id: latestOrder.order_id, plan: latestOrder.plan_key, status: latestOrder.status, createdAt: Number(latestOrder.created_at) } : null
+  }, 200, origin);
 }
 async function logoutAccount(request, env, origin) {
   const account = await authenticateRequest(request, env);
@@ -255,8 +274,10 @@ async function createSupportTicket(request, env, origin) {
   const nickname = text(body.nickname, 24);
   const email = text(body.email, 120);
   const category = text(body.category, 60) || 'Загальне питання';
-  const message = text(body.message, 2000);
-  if (nickname.length < 2 || message.length < 8) return json({ ok: false, error: 'Перевір нікнейм і текст звернення.' }, 400, origin);
+  const gameName = text(body.gameName, 80);
+  const messageText = text(body.message, 2000);
+  const message = gameName ? `Гра: ${gameName}\n\n${messageText}` : messageText;
+  if (nickname.length < 2 || messageText.length < 8 || (category === 'Замовлення гри' && gameName.length < 2)) return json({ ok: false, error: 'Перевір нікнейм і текст звернення.' }, 400, origin);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ ok: false, error: 'Перевір адресу електронної пошти.' }, 400, origin);
   if (await hitRateLimit(request, env, 'ticket-create', 3, 3600)) return json({ ok: false, error: 'Досягнуто ліміт нових звернень. Спробуй пізніше.' }, 429, origin);
   const ticketId = makeId();
@@ -273,7 +294,7 @@ async function createSupportTicket(request, env, origin) {
   }
   let notified = true;
   try {
-    await sendAdmin(env, `📩 НОВЕ ЗВЕРНЕННЯ RYZOR\nНомер: ${ticketId}\nНікнейм: ${nickname}\nEmail: ${email || 'Не вказано'}\nТема: ${category}\n\n${message}\n\nВідповідь на сайті:\n/reply ${ticketId} Текст відповіді`);
+    await sendAdmin(env, `📩 НОВЕ ЗВЕРНЕННЯ RYZOR\nНомер: ${ticketId}\nНікнейм: ${nickname}\nEmail: ${email || 'Не вказано'}\nТема: ${category}\n${gameName ? `Гра: ${gameName}\n` : ''}\n${messageText}\n\nВідповідь на сайті:\n/reply ${ticketId} Текст відповіді`);
   } catch { notified = false; }
   return json({ ok: true, ticketId, accessKey, adminNotified: notified }, 201, origin);
 }
@@ -426,12 +447,94 @@ async function handleTelegramWebhook(request, env) {
     await telegram(env, 'sendMessage', { chat_id: chatId, text: result.meta?.changes ? `Заявку ${id} знову відкрито.` : `Заявку ${id} не знайдено.` });
     return new Response('OK');
   }
-  await telegram(env, 'sendMessage', { chat_id: chatId, text: 'Команди:\n/reply RZ-XXXXXX Текст відповіді\n/close RZ-XXXXXX\n/open RZ-XXXXXX' });
+  const approveMatch = content.match(/^\/approve(?:@\w+)?\s+(RZ-[A-Z0-9]{6})$/i);
+  if (approveMatch) {
+    const id = approveMatch[1].toUpperCase();
+    const order = await env.DB.prepare('SELECT order_id, account_id, plan_key, status FROM payment_orders WHERE order_id = ?').bind(id).first();
+    if (!order) {
+      await telegram(env, 'sendMessage', { chat_id: chatId, text: `Замовлення ${id} не знайдено.` });
+      return new Response('OK');
+    }
+    if (!['proof_submitted', 'free_requested'].includes(order.status)) {
+      await telegram(env, 'sendMessage', { chat_id: chatId, text: `Замовлення ${id} має статус ${order.status}; його не можна підтвердити.` });
+      return new Response('OK');
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const previous = await env.DB.prepare('SELECT status, expires_at FROM subscriptions WHERE account_id = ?').bind(order.account_id).first();
+    const planKey = order.plan_key;
+    const startedAt = previous?.status === 'active' && (previous.expires_at == null || Number(previous.expires_at) > now)
+      ? Math.max(now, Number(previous.expires_at || now)) : now;
+    const expiresAt = planKey === 'free' ? null : startedAt + 30 * 86400;
+    await env.DB.prepare(`INSERT INTO subscriptions (account_id, plan_key, status, started_at, expires_at, order_id)
+      VALUES (?, ?, 'active', ?, ?, ?)
+      ON CONFLICT(account_id) DO UPDATE SET plan_key = excluded.plan_key, status = 'active', started_at = excluded.started_at, expires_at = excluded.expires_at, order_id = excluded.order_id`)
+      .bind(order.account_id, planKey, startedAt, expiresAt, id).run();
+    await env.DB.prepare("UPDATE payment_orders SET status = 'approved', reviewed_at = ? WHERE order_id = ?").bind(now, id).run();
+    const expiryText = expiresAt ? `до ${new Date(expiresAt * 1000).toLocaleDateString('uk-UA')}` : 'безстроково';
+    await telegram(env, 'sendMessage', { chat_id: chatId, text: `✅ Замовлення ${id} підтверджено. Підписка «${planKey}» активна ${expiryText}. Статус користувач побачить в акаунті Ryzor.` });
+    return new Response('OK');
+  }
+  const rejectMatch = content.match(/^\/reject(?:@\w+)?\s+(RZ-[A-Z0-9]{6})(?:\s+([\s\S]{1,300}))?$/i);
+  if (rejectMatch) {
+    const id = rejectMatch[1].toUpperCase();
+    const order = await env.DB.prepare("SELECT status FROM payment_orders WHERE order_id = ?").bind(id).first();
+    if (!order) await telegram(env, 'sendMessage', { chat_id: chatId, text: `Замовлення ${id} не знайдено.` });
+    else if (order.status === 'approved') await telegram(env, 'sendMessage', { chat_id: chatId, text: `Замовлення ${id} вже підтверджене. Для зміни підписки звернись до бази вручну.` });
+    else {
+      await env.DB.prepare("UPDATE payment_orders SET status = 'rejected', reviewed_at = ? WHERE order_id = ?").bind(Math.floor(Date.now() / 1000), id).run();
+      await telegram(env, 'sendMessage', { chat_id: chatId, text: `Замовлення ${id} відхилено.${rejectMatch[2] ? ` Причина: ${text(rejectMatch[2], 300)}` : ''}` });
+    }
+    return new Response('OK');
+  }
+  if (/^\/orders(?:@\w+)?$/i.test(content)) {
+    const pending = await env.DB.prepare("SELECT order_id, plan_key, price_uah, status, created_at FROM payment_orders WHERE status IN ('proof_submitted', 'free_requested', 'awaiting_proof') ORDER BY created_at DESC LIMIT 10").all();
+    const lines = (pending.results || []).map(item => `${item.order_id} · ${item.plan_key} · ${item.price_uah} ₴ · ${item.status}`);
+    await telegram(env, 'sendMessage', { chat_id: chatId, text: lines.length ? `Останні замовлення:\n${lines.join('\n')}` : 'Немає замовлень, що очікують перевірки.' });
+    return new Response('OK');
+  }
+  await telegram(env, 'sendMessage', { chat_id: chatId, text: 'Команди:\n/reply RZ-XXXXXX Текст відповіді\n/close RZ-XXXXXX\n/open RZ-XXXXXX\n/orders\n/approve RZ-XXXXXX\n/reject RZ-XXXXXX Причина' });
   return new Response('OK');
 }
 
-async function submitPayment(request, env, origin) {
+const PAYMENT_PLANS = {
+  free: { name: 'Безкоштовний', price: 0 },
+  pro: { name: 'Професійний', price: 199 },
+  unlimited: { name: 'Безлімітний', price: 399 }
+};
+
+async function createPaymentIntent(request, env, origin) {
+  if (!env.DB) return json({ ok: false, error: 'База замовлень ще не налаштована.' }, 503, origin);
   if (!requireConfigured(env)) return json({ ok: false, error: 'Telegram-бот не налаштовано адміністратором.' }, 503, origin);
+  const account = await authenticateRequest(request, env);
+  if (!account) return json({ ok: false, error: 'Спочатку увійди у свій акаунт Ryzor.' }, 401, origin);
+  if (await hitRateLimit(request, env, 'payment-intent', 6, 3600)) return json({ ok: false, error: 'Забагато заявок за годину. Спробуй пізніше.' }, 429, origin);
+  let body;
+  try { body = await parseJson(request); } catch { return json({ ok: false, error: 'Некоректні дані замовлення.' }, 400, origin); }
+  const planKey = text(body.plan, 24);
+  const plan = PAYMENT_PLANS[planKey];
+  const nickname = text(body.nickname, 24);
+  const telegramName = text(body.telegram, 40);
+  if (!plan || nickname.length < 2) return json({ ok: false, error: 'Перевір тариф і нікнейм.' }, 400, origin);
+  const orderId = makeId();
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = plan.price > 0 ? now + 600 : null;
+  const status = plan.price > 0 ? 'awaiting_proof' : 'free_requested';
+  await env.DB.prepare(`INSERT INTO payment_orders (order_id, account_id, nickname, email, telegram, plan_key, price_uah, status, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(orderId, account.id, nickname, account.email, telegramName, planKey, plan.price, status, now, expiresAt).run();
+  let adminNotified = true;
+  if (plan.price === 0) {
+    try {
+      await sendAdmin(env, `🆓 ЗАЯВКА НА БЕЗКОШТОВНИЙ ТАРИФ RYZOR\nНомер: ${orderId}\nАкаунт: ${account.fullName} (${account.email})\nНікнейм: ${nickname}\nТариф: ${plan.name}\n\nПідтвердити: /approve ${orderId}\nВідхилити: /reject ${orderId} Причина`);
+    } catch { adminNotified = false; }
+  }
+  return json({ ok: true, orderId, plan: planKey, price: plan.price, expiresAt, adminNotified }, 201, origin);
+}
+
+async function submitPayment(request, env, origin) {
+  if (!env.DB || !requireConfigured(env)) return json({ ok: false, error: 'Платіжна система ще не налаштована адміністратором.' }, 503, origin);
+  const account = await authenticateRequest(request, env);
+  if (!account) return json({ ok: false, error: 'Сесія завершилася. Увійди знову.' }, 401, origin);
   if (await hitRateLimit(request, env, 'payment-proof', 5, 3600)) return json({ ok: false, error: 'Забагато спроб надсилання за годину. Спробуй пізніше.' }, 429, origin);
   if (!request.headers.get('content-type')?.toLowerCase().includes('multipart/form-data')) return json({ ok: false, error: 'Очікується форма з файлом.' }, 415, origin);
   const size = Number(request.headers.get('content-length') || 0);
@@ -440,42 +543,42 @@ async function submitPayment(request, env, origin) {
   try { form = await request.formData(); } catch { return json({ ok: false, error: 'Форма пошкоджена.' }, 400, origin); }
   if (text(form.get('website'), 100)) return json({ ok: true }, 200, origin);
   const orderId = text(form.get('orderId'), 24).toUpperCase();
-  const nickname = text(form.get('nickname'), 24);
-  const email = text(form.get('email'), 120);
-  const telegramName = text(form.get('telegram'), 40);
-  const plan = text(form.get('plan'), 40);
-  const price = text(form.get('price'), 24);
-  const createdAt = text(form.get('createdAt'), 40);
-  const comment = text(form.get('comment'), 400);
-  const prices = { 'Професійний': '199 UAH', 'Безлімітний': '399 UAH', 'Безкоштовний': '0 UAH' };
-  if (!/^RZ-[A-Z0-9]{6,12}$/.test(orderId) || nickname.length < 2 || !/^\S+@\S+\.\S+$/.test(email) || prices[plan] !== price) return json({ ok: false, error: 'Перевір дані заявки або тариф.' }, 400, origin);
+  if (!/^RZ-[A-Z0-9]{6}$/.test(orderId)) return json({ ok: false, error: 'Некоректний номер замовлення.' }, 400, origin);
+  const order = await env.DB.prepare('SELECT * FROM payment_orders WHERE order_id = ? AND account_id = ?').bind(orderId, account.id).first();
+  if (!order) return json({ ok: false, error: 'Замовлення не знайдено для цього акаунта.' }, 404, origin);
+  if (order.status !== 'awaiting_proof') return json({ ok: false, error: 'Це замовлення вже не очікує підтвердження.' }, 409, origin);
+  const now = Math.floor(Date.now() / 1000);
+  if (!order.expires_at || Number(order.expires_at) < now) {
+    await env.DB.prepare("UPDATE payment_orders SET status = 'expired' WHERE order_id = ? AND status = 'awaiting_proof'").bind(orderId).run();
+    return json({ ok: false, error: 'Час оплати завершився. Створи нове замовлення.' }, 410, origin);
+  }
   const file = form.get('attachment');
-  const free = plan === 'Безкоштовний';
-  if (!free && (!(file instanceof File) || file.size < 1)) return json({ ok: false, error: 'Додай файл підтвердження.' }, 400, origin);
-  const allowedExtension = file instanceof File && /\.(jpe?g|png|webp|mp4|webm|mov|pdf|txt)$/i.test(file.name);
-  if (file instanceof File && (file.size > MAX_UPLOAD_BYTES || (!ALLOWED_MIME.has(file.type) && !allowedExtension))) return json({ ok: false, error: 'Файл завеликий або має непідтримуваний формат.' }, 415, origin);
+  if (!(file instanceof File) || file.size < 1) return json({ ok: false, error: 'Додай файл підтвердження.' }, 400, origin);
+  const allowedExtension = /\.(jpe?g|png|webp|mp4|webm|mov|pdf|txt)$/i.test(file.name);
+  if (file.size > MAX_UPLOAD_BYTES || !(ALLOWED_MIME.has(file.type) || (file.type === '' && allowedExtension))) return json({ ok: false, error: 'Файл завеликий або має непідтримуваний формат.' }, 415, origin);
+  const comment = text(form.get('comment'), 400);
   const details = [
-    'RYZOR — ЗАЯВКА НА ПІДПИСКУ', `Номер: ${orderId}`, `Нікнейм: ${nickname}`, `Email: ${email}`,
-    `Telegram: ${telegramName || 'Не вказано'}`, `Тариф: ${plan}`, `Сума: ${price}`, `Створено: ${createdAt || 'Не вказано'}`,
-    file instanceof File ? `Файл: ${text(file.name, 90)} (${(file.size / 1048576).toFixed(2)} MB)` : 'Безкоштовний тариф — без переказу',
-    `Коментар: ${comment || 'Немає'}`
+    'RYZOR — ПІДТВЕРДЖЕННЯ ОПЛАТИ', `Номер: ${order.order_id}`, `Акаунт: ${account.fullName} (${account.email})`,
+    `Нікнейм: ${order.nickname}`, `Telegram: ${order.telegram || 'Не вказано'}`,
+    `Тариф: ${PAYMENT_PLANS[order.plan_key]?.name || order.plan_key}`, `Сума: ${order.price_uah} UAH`,
+    `Створено: ${new Date(Number(order.created_at) * 1000).toISOString()}`,
+    `Файл: ${text(file.name, 90)} (${(file.size / 1048576).toFixed(2)} MB)`, `Коментар: ${comment || 'Немає'}`,
+    `Після перевірки: /approve ${order.order_id} або /reject ${order.order_id} Причина`
   ].join('\n');
   try {
-    if (file instanceof File) {
-      const method = file.type.startsWith('image/') && file.size <= 10 * 1048576 ? 'sendPhoto' : file.type.startsWith('video/') ? 'sendVideo' : 'sendDocument';
-      const field = method === 'sendPhoto' ? 'photo' : method === 'sendVideo' ? 'video' : 'document';
-      const telegramForm = new FormData();
-      telegramForm.set('chat_id', String(adminTelegramId(env)));
-      telegramForm.set('caption', details.slice(0, 1000));
-      telegramForm.set(field, file, text(file.name, 90) || 'ryzor-proof');
-      await telegram(env, method, telegramForm);
-    } else {
-      await sendAdmin(env, details);
-    }
+    const method = ['image/jpeg', 'image/png'].includes(file.type) && file.size <= 10 * 1048576 ? 'sendPhoto' : file.type === 'video/mp4' ? 'sendVideo' : 'sendDocument';
+    const field = method === 'sendPhoto' ? 'photo' : method === 'sendVideo' ? 'video' : 'document';
+    const telegramForm = new FormData();
+    telegramForm.set('chat_id', String(adminTelegramId(env)));
+    telegramForm.set('caption', details.slice(0, 1000));
+    telegramForm.set(field, file, text(file.name, 90) || 'ryzor-proof');
+    await telegram(env, method, telegramForm);
   } catch {
-    return json({ ok: false, error: 'Telegram не прийняв заявку. Дані не підтверджено — спробуй пізніше.' }, 502, origin);
+    return json({ ok: false, error: 'Telegram не прийняв файл. Замовлення залишилося незавершеним — спробуй ще раз.' }, 502, origin);
   }
-  return json({ ok: true, orderId }, 200, origin);
+  await env.DB.prepare("UPDATE payment_orders SET status = 'proof_submitted', reviewed_at = NULL, comment = ?, proof_file_name = ?, proof_size = ? WHERE order_id = ? AND account_id = ? AND status = 'awaiting_proof'")
+    .bind(comment, text(file.name, 120), file.size, orderId, account.id).run();
+  return json({ ok: true, orderId, status: 'proof_submitted' }, 200, origin);
 }
 
 export default {
@@ -500,6 +603,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/api/auth/login') return loginAccount(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/api/auth/me') return getCurrentAccount(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/api/auth/logout') return logoutAccount(request, env, origin);
+    if (request.method === 'POST' && url.pathname === '/payment/intent') return createPaymentIntent(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/payment') return submitPayment(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/api/support/create') return createSupportTicket(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/api/support/message') return addSupportMessage(request, env, origin);

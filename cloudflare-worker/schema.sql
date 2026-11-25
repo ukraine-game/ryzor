@@ -68,3 +68,36 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_account ON auth_sessions(account_id);
+
+
+-- Orders and subscription status are associated with the signed-in account.
+CREATE TABLE IF NOT EXISTS payment_orders (
+  order_id TEXT PRIMARY KEY,
+  account_id INTEGER NOT NULL,
+  nickname TEXT NOT NULL,
+  email TEXT NOT NULL,
+  telegram TEXT,
+  plan_key TEXT NOT NULL CHECK (plan_key IN ('free', 'pro', 'unlimited')),
+  price_uah INTEGER NOT NULL CHECK (price_uah >= 0),
+  status TEXT NOT NULL CHECK (status IN ('awaiting_proof', 'proof_submitted', 'free_requested', 'approved', 'rejected', 'expired')),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  reviewed_at INTEGER,
+  comment TEXT,
+  proof_file_name TEXT,
+  proof_size INTEGER,
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_account_created ON payment_orders(account_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_status_created ON payment_orders(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  account_id INTEGER PRIMARY KEY,
+  plan_key TEXT NOT NULL CHECK (plan_key IN ('free', 'pro', 'unlimited')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'expired')),
+  started_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  order_id TEXT NOT NULL,
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY (order_id) REFERENCES payment_orders(order_id)
+);

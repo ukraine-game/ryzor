@@ -65,18 +65,50 @@
   $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => switchMode(tab.dataset.mode)));
   $$('[data-switch]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.switch)));
 
-  function showAccount(user) {
+  function showAccount(user, subscription = null, latestOrder = null) {
     $('#authMain').hidden = true;
     $('#accountPanel').hidden = false;
     $('#accountName').textContent = user.fullName || 'Твій акаунт';
     $('#accountEmail').textContent = user.email || '';
     $('#accountAvatar').textContent = (user.fullName || 'R').trim().charAt(0).toLocaleUpperCase('uk-UA');
+    const planNames = { free: 'Безкоштовний', pro: 'Професійний', unlimited: 'Безлімітний' };
+    const panel = $('#accountSubscription');
+    const heading = $('strong', panel);
+    const details = $('small', panel);
+    if (subscription?.status === 'active') {
+      heading.textContent = `${planNames[subscription.plan] || subscription.plan} · активна`;
+      details.textContent = subscription.expiresAt ? `Діє до ${new Date(subscription.expiresAt * 1000).toLocaleDateString('uk-UA')}` : 'Безстроковий доступ';
+    } else if (subscription?.status === 'expired') {
+      heading.textContent = 'Термін завершився';
+      details.textContent = 'Оформи нове замовлення, щоб продовжити доступ.';
+    } else if (latestOrder && ['awaiting_proof', 'proof_submitted', 'free_requested'].includes(latestOrder.status)) {
+      heading.textContent = 'Очікує перевірки';
+      details.textContent = `Замовлення ${latestOrder.id} · ${planNames[latestOrder.plan] || latestOrder.plan}`;
+    } else if (latestOrder?.status === 'rejected') {
+      heading.textContent = 'Замовлення відхилено';
+      details.textContent = 'Звернись до підтримки, якщо потрібне уточнення.';
+    } else {
+      heading.textContent = 'Ще не оформлена';
+      details.textContent = 'Після підтвердження оплати статус з’явиться тут.';
+    }
     clearStatus();
   }
-  function finishLogin(data) {
+  async function refreshAccountDetails(token) {
+    try {
+      const result = await api('/api/auth/me', {}, token);
+      showAccount(result.user, result.subscription, result.latestOrder);
+    } catch { /* Keep the account view available; next refresh will verify the session. */ }
+  }
+  async function finishLogin(data) {
     sessionStorage.setItem(SESSION_KEY, data.sessionToken);
     sessionStorage.setItem('ryzor.auth.user.v1', JSON.stringify(data.user));
     showAccount(data.user);
+    const next = new URLSearchParams(location.search).get('next') || '';
+    if (/^payment\.html(?:\?[^#]*)?$/.test(next)) {
+      location.replace(next);
+      return;
+    }
+    await refreshAccountDetails(data.sessionToken);
     status('Акаунт готовий. Тепер можеш повернутися на головну сторінку RYZOR.');
   }
 
@@ -153,16 +185,16 @@
     if (password.length < 10) return status('Пароль має містити щонайменше 10 символів.', true);
     const button = $('button[type="submit"]', form);
     button.disabled = true;
-    button.innerHTML = 'ЗАХИЩАЄМО ПАРОЛЬ…';
+    button.innerHTML = 'Захищаємо пароль…';
     try {
       const saltBytes = crypto.getRandomValues(new Uint8Array(16));
       const passwordSalt = toBase64Url(saltBytes);
       const passwordProof = await derivePasswordProof(password, passwordSalt, PASSWORD_ITERATIONS);
       const result = await api('/api/auth/register', { credential: pendingCredential, fullName, passwordSalt, passwordProof });
       pendingCredential = '';
-      finishLogin(result);
+      await finishLogin(result);
     } catch (error) { status(error.message, true); }
-    finally { button.disabled = false; button.innerHTML = 'СТВОРИТИ АКАУНТ <span>↗</span>'; }
+    finally { button.disabled = false; button.innerHTML = 'Створити акаунт'; }
   });
 
   $('#loginForm')?.addEventListener('submit', async event => {
@@ -172,16 +204,16 @@
     const data = new FormData(form);
     const button = $('button[type="submit"]', form);
     button.disabled = true;
-    button.textContent = 'ПЕРЕВІРЯЄМО…';
+    button.textContent = 'Перевіряємо…';
     try {
       const email = String(data.get('email') || '').trim().toLowerCase();
       const password = String(data.get('password') || '');
       const challenge = await api('/api/auth/salt', { email });
       const passwordProof = await derivePasswordProof(password, challenge.salt, Number(challenge.iterations) || PASSWORD_ITERATIONS);
       const result = await api('/api/auth/login', { email, passwordProof });
-      finishLogin(result);
+      await finishLogin(result);
     } catch (error) { status(error.message, true); }
-    finally { button.disabled = false; button.innerHTML = 'УВІЙТИ <span>↗</span>'; }
+    finally { button.disabled = false; button.innerHTML = 'Увійти'; }
   });
 
   $('#logoutButton')?.addEventListener('click', async () => {
@@ -201,12 +233,16 @@
     if (!token) return;
     try {
       const result = await api('/api/auth/me', {}, token);
-      showAccount(result.user);
+      showAccount(result.user, result.subscription, result.latestOrder);
     } catch {
       sessionStorage.removeItem(SESSION_KEY);
       sessionStorage.removeItem('ryzor.auth.user.v1');
     }
   }
   restoreSession();
+  setInterval(() => {
+    const token = sessionStorage.getItem(SESSION_KEY);
+    if (token && !$('#accountPanel').hidden) refreshAccountDetails(token);
+  }, 30000);
   if (!apiBase) status('Підключення до сервера акаунтів ще не налаштоване. Після розгортання Cloudflare Worker реєстрація та вхід запрацюють.', true);
 })();

@@ -52,7 +52,7 @@
     try {
       const user = JSON.parse(sessionStorage.getItem('ryzor.auth.user.v1') || 'null');
       if (user && typeof user.fullName === 'string') {
-        accountLink.textContent = `МОЯ ОБЛІКОВКА · ${user.fullName.split(/\s+/)[0]} ↗`;
+        accountLink.textContent = user.fullName.split(/\s+/)[0];
         accountLink.setAttribute('aria-label', `Мій акаунт: ${user.fullName}`);
       }
     } catch { sessionStorage.removeItem('ryzor.auth.user.v1'); }
@@ -73,6 +73,8 @@
       if (!card.hidden) visible++;
     });
     $('#emptyGames').hidden = visible > 0;
+    const count = $('#visibleGameCount');
+    if (count) count.textContent = String(visible).padStart(2, '0');
   }
   filters.forEach(button => button.addEventListener('click', () => {
     activeFilter = button.dataset.filter;
@@ -109,9 +111,9 @@
     $('#modalGameKind').textContent = activeGame.kind;
     $('#modalGameImage').src = activeGame.image;
     $('#modalGameImage').alt = activeGame.name;
-    launchState.innerHTML = '<span class="state-marker">01</span><div><strong>ПЕРЕД ЗАПУСКОМ</strong><p>Підтверди, що хочеш продовжити, та натисни Start у Telegram-боті <b>@ryzor_bot</b>. Після цього сайт підтвердить підключення.</p></div>';
+    launchState.innerHTML = '<span class="state-marker">1</span><div><strong>Перед запуском</strong><p>Підтверди, що хочеш продовжити, та натисни Start у Telegram-боті <b>@ryzor_bot</b>. Після цього сайт підтвердить підключення.</p></div>';
     launchButton.disabled = false;
-    launchButton.innerHTML = 'ПЕРЕЙТИ ДО TELEGRAM <span>↗</span>';
+    launchButton.innerHTML = 'Перейти до Telegram';
     launchHint.textContent = apiBase ? 'Після переходу натисни Start у боті. Вікно сайту можна залишити відкритим.' : 'Підключення ще не налаштоване: власник має додати адресу Worker у config.js.';
     botLink.href = 'https://t.me/ryzor_bot';
     clearInterval(launchPoll);
@@ -130,7 +132,7 @@
   launchButton?.addEventListener('click', async () => {
     if (!activeGame) return;
     launchButton.disabled = true;
-    launchButton.textContent = 'СТВОРЮЄМО ЗАПИТ…';
+    launchButton.textContent = 'Створюємо запит…';
     launchHint.textContent = 'Готуємо одноразове посилання для перевірки Telegram.';
     let telegramTab = null;
     try {
@@ -154,15 +156,15 @@
       } else {
         launchHint.textContent = 'Браузер заблокував нову вкладку. Натисни «Відкрити @ryzor_bot окремо», а потім Start.';
       }
-      launchState.innerHTML = '<span class="state-marker">02</span><div><strong>ОЧІКУЄМО НА /START</strong><p>Відкрий бота та натисни Start. Сайт перевірятиме підтвердження автоматично. Посилання дійсне 5 хвилин.</p></div>';
-      launchButton.textContent = 'ОЧІКУЄМО ПІДТВЕРДЖЕННЯ…';
+      launchState.innerHTML = '<span class="state-marker">2</span><div><strong>Очікуємо на /start</strong><p>Відкрий бота та натисни Start. Сайт перевірятиме підтвердження автоматично. Посилання дійсне 5 хвилин.</p></div>';
+      launchButton.textContent = 'Очікуємо підтвердження…';
       launchDeadline = Date.now() + 5 * 60 * 1000;
       clearInterval(launchPoll);
       const check = async () => {
         if (Date.now() > launchDeadline) {
           clearInterval(launchPoll);
           launchButton.disabled = false;
-          launchButton.textContent = 'СПРОБУВАТИ ЩЕ РАЗ';
+          launchButton.textContent = 'Спробувати ще раз';
           launchHint.textContent = 'Час підтвердження минув. Створи нове посилання та повтори /start.';
           return;
         }
@@ -170,16 +172,16 @@
           const status = await api('/api/launch/status', { method: 'POST', body: JSON.stringify({ sessionId, sessionToken }) });
           if (status.verified) {
             clearInterval(launchPoll);
-            launchState.innerHTML = '<span class="state-marker state-ok">✓</span><div><strong>TELEGRAM ПІДТВЕРДЖЕНО</strong><p>Бот отримав команду /start. Тепер Ryzor може пов’язати цей запит із твоїм Telegram.</p></div>';
+            launchState.innerHTML = '<span class="state-marker state-ok">✓</span><div><strong>Telegram підтверджено</strong><p>Бот отримав команду /start. Тепер Ryzor може пов’язати цей запит із твоїм Telegram.</p></div>';
             launchButton.disabled = true;
-            launchButton.textContent = 'ПІДТВЕРДЖЕНО';
+            launchButton.textContent = 'Підтверджено';
             launchHint.textContent = 'Хмарні ігрові сервери ще готуються. Це підтверджує Telegram, але поки не створює віддалену ігрову сесію.';
           }
         } catch (error) {
           launchHint.textContent = error.message;
           clearInterval(launchPoll);
           launchButton.disabled = false;
-          launchButton.textContent = 'СПРОБУВАТИ ЩЕ РАЗ';
+          launchButton.textContent = 'Спробувати ще раз';
         }
       };
       launchPoll = setInterval(check, 2500);
@@ -187,10 +189,136 @@
     } catch (error) {
       if (telegramTab && !telegramTab.closed) telegramTab.close();
       launchButton.disabled = false;
-      launchButton.textContent = 'ПОВТОРИТИ';
+      launchButton.textContent = 'Повторити';
       launchHint.textContent = error.message;
     }
   });
+
+  // API health is distinct from game-server readiness; the site never pretends streaming is online.
+  const apiStatusText = $('#apiStatusText');
+  const apiStatusHint = $('#apiStatusHint');
+  const apiStatusTag = $('#apiStatusTag');
+  const apiStatusDot = $('#apiStatusDot');
+  async function checkApiHealth() {
+    if (!apiBase) {
+      if (apiStatusText) apiStatusText.textContent = 'Не підключено';
+      if (apiStatusHint) apiStatusHint.textContent = 'Адміністратор ще не вказав адресу Worker.';
+      if (apiStatusTag) apiStatusTag.textContent = 'ОЧІКУЄ';
+      apiStatusDot?.classList.add('status-offline');
+      return;
+    }
+    try {
+      const response = await fetch(`${apiBase}/health`, { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
+      const data = await response.json();
+      if (!response.ok || data.ok !== true) throw new Error('API не відповідає');
+      if (apiStatusText) apiStatusText.textContent = 'Підключено';
+      if (apiStatusHint) apiStatusHint.textContent = 'Сервіс обробки акаунтів і звернень доступний.';
+      if (apiStatusTag) apiStatusTag.textContent = 'ПРАЦЮЄ';
+      apiStatusDot?.classList.add('status-online');
+      apiStatusDot?.classList.remove('status-offline');
+    } catch {
+      if (apiStatusText) apiStatusText.textContent = 'Недоступний';
+      if (apiStatusHint) apiStatusHint.textContent = 'Перевір підключення або налаштування Worker.';
+      if (apiStatusTag) apiStatusTag.textContent = 'ПОМИЛКА';
+      apiStatusDot?.classList.add('status-offline');
+      apiStatusDot?.classList.remove('status-online');
+    }
+  }
+  checkApiHealth();
+  setInterval(() => { if (!document.hidden) checkApiHealth(); }, 60000);
+
+  // Curated Steam suggestions are local: no typed support text is sent to a third-party search proxy.
+  // Only supported, non-weapon-focused titles are included here.
+  const supportGames = [
+    { name: 'Grand Mountain Adventure 2', appId: '3605330', category: 'Пригоди' },
+    { name: 'Grand Mountain Adventure: Wonderlands', appId: '1247360', category: 'Пригоди' },
+    { name: 'Trackmania', appId: '2225070', category: 'Гонки' },
+    { name: 'Euro Truck Simulator 2', appId: '227300', category: 'Симулятор' },
+    { name: 'City Car Driving', appId: '493490', category: 'Симулятор' },
+    { name: 'Farming Simulator 25', appId: '2300320', category: 'Симулятор' },
+    { name: 'EA SPORTS FC 26', appId: '3405690', category: 'Спорт' },
+    { name: 'Supermarket Simulator', appId: '2670630', category: 'Менеджмент' },
+    { name: 'MECCHA CHAMELEON', appId: '4704690', category: 'Мультиплеєр' },
+    { name: 'Stardew Valley', appId: '413150', category: 'Симулятор життя' },
+    { name: 'PowerWash Simulator', appId: '1290000', category: 'Симулятор' },
+    { name: 'Unpacking', appId: '1135690', category: 'Головоломка' },
+    { name: 'House Flipper', appId: '613100', category: 'Симулятор' }
+  ];
+  const categorySelect = $('#supportCategory');
+  const gameField = $('#supportGameField');
+  const gameInput = $('#supportGame');
+  const suggestionsBox = $('#steamSuggestions');
+  let suggestionIndex = -1;
+  let visibleSuggestions = [];
+  function closeSuggestions() {
+    if (!suggestionsBox || !gameInput) return;
+    suggestionsBox.hidden = true;
+    gameInput.setAttribute('aria-expanded', 'false');
+    suggestionIndex = -1;
+  }
+  function selectSupportGame(game) {
+    gameInput.value = game.name;
+    gameInput.dataset.appId = game.appId;
+    gameInput.dataset.selected = 'true';
+    closeSuggestions();
+  }
+  function renderSuggestions() {
+    if (!gameInput || !suggestionsBox) return;
+    const query = gameInput.value.trim().toLocaleLowerCase('uk-UA');
+    suggestionsBox.replaceChildren();
+    visibleSuggestions = query.length < 2 ? [] : supportGames.filter(game => game.name.toLocaleLowerCase('uk-UA').includes(query)).slice(0, 6);
+    if (!visibleSuggestions.length) { closeSuggestions(); return; }
+    visibleSuggestions.forEach((game, index) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'steam-suggestion';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(index === suggestionIndex));
+      const image = document.createElement('img');
+      image.src = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${game.appId}/header.jpg`;
+      image.alt = '';
+      image.loading = 'lazy';
+      image.referrerPolicy = 'no-referrer';
+      const details = document.createElement('span');
+      const title = document.createElement('strong'); title.textContent = game.name;
+      const kind = document.createElement('small'); kind.textContent = game.category;
+      details.append(title, kind);
+      option.append(image, details);
+      option.addEventListener('click', () => selectSupportGame(game));
+      suggestionsBox.append(option);
+    });
+    suggestionsBox.hidden = false;
+    gameInput.setAttribute('aria-expanded', 'true');
+  }
+  function updateSupportGameField() {
+    if (!categorySelect || !gameField || !gameInput) return;
+    const required = categorySelect.value === 'Замовлення гри';
+    gameField.hidden = !required;
+    gameInput.required = required;
+    if (!required) {
+      gameInput.value = '';
+      delete gameInput.dataset.appId;
+      delete gameInput.dataset.selected;
+      closeSuggestions();
+    }
+  }
+  categorySelect?.addEventListener('change', updateSupportGameField);
+  gameInput?.addEventListener('input', () => {
+    delete gameInput.dataset.appId;
+    delete gameInput.dataset.selected;
+    renderSuggestions();
+  });
+  gameInput?.addEventListener('keydown', event => {
+    if (suggestionsBox?.hidden) return;
+    if (event.key === 'ArrowDown') { event.preventDefault(); suggestionIndex = Math.min(suggestionIndex + 1, visibleSuggestions.length - 1); renderSuggestions(); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); suggestionIndex = Math.max(suggestionIndex - 1, 0); renderSuggestions(); }
+    else if (event.key === 'Enter' && suggestionIndex >= 0 && visibleSuggestions[suggestionIndex]) { event.preventDefault(); selectSupportGame(visibleSuggestions[suggestionIndex]); }
+    else if (event.key === 'Escape') closeSuggestions();
+  });
+  document.addEventListener('click', event => {
+    if (gameField && !gameField.contains(event.target)) closeSuggestions();
+  });
+  updateSupportGameField();
 
   // Support inbox. Only random ticket credentials are stored locally; the Worker stores ticket content in D1.
   const STORAGE_KEY = 'ryzor.support.v1';
@@ -268,12 +396,12 @@
     if (!form.reportValidity()) return;
     const button = $('button[type="submit"]', form);
     const oldText = button.textContent;
-    button.disabled = true; button.textContent = 'НАДСИЛАЄМО…';
+    button.disabled = true; button.textContent = 'Надсилаємо…';
     const data = new FormData(form);
     try {
       const result = await api('/api/support/create', {
         method: 'POST',
-        body: JSON.stringify({ nickname: data.get('nickname'), email: data.get('email'), category: data.get('category'), message: data.get('message') })
+        body: JSON.stringify({ nickname: data.get('nickname'), email: data.get('email'), category: data.get('category'), gameName: data.get('gameName') || '', message: data.get('message') })
       });
       const tickets = getSavedTickets();
       tickets.unshift({ id: result.ticketId, key: result.accessKey, category: String(data.get('category')), status: 'open' });

@@ -9,6 +9,10 @@
     pro: { name: 'Професійний', price: 199, duration: '30 днів', period: '/ 30 днів', description: 'Для регулярних ігрових сесій та пріоритету.' },
     unlimited: { name: 'Безлімітний', price: 399, duration: '30 днів', period: '/ 30 днів', description: 'Максимум можливостей у межах доступної інфраструктури.' }
   };
+  const AUTH_SESSION_KEY = 'ryzor.auth.session.v1';
+  const accountToken = sessionStorage.getItem(AUTH_SESSION_KEY) || '';
+  let accountUser = null;
+  try { accountUser = JSON.parse(sessionStorage.getItem('ryzor.auth.user.v1') || 'null'); } catch { accountUser = null; }
   let order = null;
   let selectedFile = null;
   let secondsRemaining = 600;
@@ -24,6 +28,7 @@
   const money = value => `${new Intl.NumberFormat('uk-UA').format(value)} ₴`;
   const cardNumber = String(paymentConfig.cardNumber || '').replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
   const isPaymentConfigured = () => Boolean(cardNumber && paymentConfig.recipient && paymentConfig.bank && apiBase);
+
   const notify = message => {
     toast.textContent = message;
     toast.classList.add('is-visible');
@@ -35,6 +40,19 @@
     node.className = `payment-submit-status is-${type}`;
     node.hidden = false;
   };
+  function authHeaders() {
+    return { Authorization: `Bearer ${accountToken}` };
+  }
+  async function postJson(path, body) {
+    const response = await fetch(`${apiBase}${path}`, {
+      method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok !== true) throw new Error(result.error || `Помилка запиту (${response.status})`);
+    return result;
+  }
   function updateSummary() {
     const plan = plans[planSelect.value] || plans.pro;
     $('#checkoutContinue').innerHTML = `${plan.price ? 'До оплати' : 'Надіслати заявку'} <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>`;
@@ -71,7 +89,7 @@
     });
   }
   function renderTimer() {
-    secondsRemaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    secondsRemaining = Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 1000));
     const minutes = Math.floor(secondsRemaining / 60);
     const seconds = secondsRemaining % 60;
     $('#paymentTimer').textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
@@ -79,25 +97,25 @@
       clearInterval(timerId);
       $('#paymentTimer').classList.add('is-expired');
       sendButton.disabled = true;
-      setStatus($('#paymentSubmitStatus'), 'Час для оплати завершився. Повернися до першого кроку та створи нову заявку.');
+      setStatus($('#paymentSubmitStatus'), 'Час для оплати завершився. Повернися до першого кроку та створи нове замовлення.');
     }
     refreshSubmitState();
   }
-  function startTimer() {
+  function startTimer(serverExpiry) {
     clearInterval(timerId);
-    expiresAt = Date.now() + 10 * 60 * 1000;
+    expiresAt = Number(serverExpiry) || Math.floor(Date.now() / 1000) + 600;
     renderTimer();
     timerId = setInterval(renderTimer, 1000);
   }
   function validFile(file) {
     const allowedMime = /^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime)|application\/pdf|text\/plain)$/i;
     const allowedExt = /\.(jpe?g|png|webp|mp4|webm|mov|pdf|txt)$/i.test(file.name);
-    return allowedMime.test(file.type) || allowedExt;
+    return allowedMime.test(file.type) || (file.type === '' && allowedExt);
   }
   function showFile(file) {
     if (!file) return;
     if (file.size > 20 * 1024 * 1024) { clearFile(); notify('Максимальний розмір файлу — 20 МБ.'); return; }
-    if (!validFile(file)) { clearFile(); notify('Додай фото, відео, PDF або документ підтримуваного формату.'); return; }
+    if (!validFile(file)) { clearFile(); notify('Додай фото, відео, PDF або текстовий документ підтримуваного формату.'); return; }
     selectedFile = file;
     $('#fileName').textContent = file.name;
     $('#fileSize').textContent = `${(file.size / 1048576).toFixed(2)} МБ`;
@@ -115,10 +133,13 @@
   function refreshSubmitState() {
     if (!sendButton) return;
     const consent = $('#proofConsent')?.checked;
-    sendButton.disabled = !selectedFile || !consent || secondsRemaining <= 0 || !isPaymentConfigured();
+    sendButton.disabled = !selectedFile || !consent || secondsRemaining <= 0 || !isPaymentConfigured() || !accountToken || !order;
   }
   async function sendOrder(formData) {
-    const response = await fetch(`${apiBase}/payment`, { method: 'POST', body: formData, mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } });
+    const response = await fetch(`${apiBase}/payment`, {
+      method: 'POST', body: formData, mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
+      headers: { Accept: 'application/json', ...authHeaders() }
+    });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok !== true) throw new Error(result.error || `Помилка надсилання (${response.status})`);
     return result;
@@ -130,55 +151,87 @@
     $('#successOrderId').textContent = order.id;
     $('#checkoutStepOne').hidden = true;
     $('#checkoutStepTwo').hidden = true;
+    $('#paymentAuthRequired').hidden = true;
     $('#paymentSuccess').hidden = false;
     step(3);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-  async function submitFreePlan() {
-    const button = $('#checkoutContinue');
-    const status = $('#checkoutStepStatus');
-    if (!apiBase) { setStatus(status, 'Заявку не відправлено: Telegram Worker ще не підключено.'); return; }
-    button.disabled = true;
-    try {
-      const payload = new FormData();
-      payload.set('orderId', order.id);
-      payload.set('nickname', order.nickname);
-      payload.set('email', order.email);
-      payload.set('telegram', order.telegram);
-      payload.set('plan', order.plan.name);
-      payload.set('price', '0 UAH');
-      payload.set('createdAt', order.createdAt);
-      await sendOrder(payload);
-      showSuccess('Заявку надіслано!', 'Заявку на безкоштовний тариф отримано адміністратором. Після перевірки тобі повідомлять про статус; хмарні сесії стануть доступні після запуску серверів.');
-    } catch (error) {
-      setStatus(status, error.message);
-      button.disabled = false;
+  function setupAccountGate() {
+    const gate = $('#paymentAuthRequired');
+    const badge = $('#paymentAccountBadge');
+    const emailField = form.elements.email;
+    const continueButton = $('#checkoutContinue');
+    if (!accountToken) {
+      gate.hidden = false;
+      const next = `payment.html${location.search}`;
+      $('#paymentAuthLink').href = `auth.html?next=${encodeURIComponent(next)}`;
+      continueButton.disabled = true;
+      return;
+    }
+    badge.hidden = false;
+    badge.textContent = accountUser?.fullName ? `Акаунт: ${accountUser.fullName}` : 'Акаунт Ryzor підключено';
+    if (accountUser?.email) {
+      emailField.value = accountUser.email;
+      emailField.readOnly = true;
     }
   }
 
   const params = new URLSearchParams(location.search);
   if (plans[params.get('plan')]) planSelect.value = params.get('plan');
-  planSelect.addEventListener('change', updateSummary);
+  setupAccountGate();
   updateSummary();
   updateRequisites();
+  planSelect.addEventListener('change', updateSummary);
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    if (!accountToken) {
+      $('#paymentAuthRequired').hidden = false;
+      setStatus($('#checkoutStepStatus'), 'Увійди в акаунт, щоб замовлення та підтверджена підписка були прив’язані до твого профілю.');
+      return;
+    }
     if (!form.reportValidity()) return;
     const data = new FormData(form);
-    const plan = plans[String(data.get('plan'))];
-    const suffix = [...crypto.getRandomValues(new Uint8Array(6))].map(value => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[value % 32]).join('');
-    order = { id: `RZ-${suffix}`, nickname: String(data.get('nickname')).trim(), email: String(data.get('email')).trim(), telegram: String(data.get('telegram') || '').trim(), plan, createdAt: new Date().toISOString() };
-    if (plan.price === 0) { await submitFreePlan(); return; }
-    $('#paymentOrderId').textContent = order.id;
-    $('#paymentOrderPlan').textContent = `${plan.name} · ${money(plan.price)}`;
-    $('#checkoutStepOne').hidden = true;
-    $('#checkoutStepTwo').hidden = false;
-    updateRequisites();
-    step(2);
-    startTimer();
-    refreshSubmitState();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const planKey = String(data.get('plan'));
+    const plan = plans[planKey];
+    if (!plan) return;
+    if (plan.price > 0 && !isPaymentConfigured()) {
+      setStatus($('#checkoutStepStatus'), 'Оплата поки не відкрита: власник ще не налаштував перевірені реквізити та Worker. Не переказуй кошти.');
+      return;
+    }
+    const button = $('#checkoutContinue');
+    button.disabled = true;
+    const originalText = button.innerHTML;
+    button.textContent = 'Створюємо замовлення…';
+    try {
+      const intent = await postJson('/payment/intent', {
+        plan: planKey,
+        nickname: String(data.get('nickname')).trim(),
+        telegram: String(data.get('telegram') || '').trim()
+      });
+      order = { id: intent.orderId, nickname: String(data.get('nickname')).trim(), email: String(data.get('email')).trim(), telegram: String(data.get('telegram') || '').trim(), plan, planKey, expiresAt: intent.expiresAt };
+      if (plan.price === 0) {
+        showSuccess('Заявку надіслано!', intent.adminNotified
+          ? `Заявку ${order.id} на безкоштовний тариф передано адміністратору. Після перевірки її статус з’явиться в акаунті. Хмарні сесії стануть доступні після запуску серверів.`
+          : `Заявку ${order.id} збережено, але Telegram не підтвердив сповіщення адміністратору. Статус можна буде перевірити в акаунті.`);
+        return;
+      }
+      $('#paymentOrderId').textContent = order.id;
+      $('#paymentOrderPlan').textContent = `${plan.name} · ${money(plan.price)}`;
+      $('#checkoutStepOne').hidden = true;
+      $('#checkoutStepTwo').hidden = false;
+      updateRequisites();
+      step(2);
+      startTimer(intent.expiresAt);
+      refreshSubmitState();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+      setStatus($('#checkoutStepStatus'), error.message);
+    } finally {
+      button.innerHTML = originalText;
+      button.disabled = !accountToken;
+    }
   });
+
   fileInput.addEventListener('change', () => showFile(fileInput.files?.[0]));
   $('#removeFile').addEventListener('click', clearFile);
   $('#proofConsent').addEventListener('change', refreshSubmitState);
@@ -192,25 +245,19 @@
     try { await navigator.clipboard.writeText(value); notify('Скопійовано.'); } catch { notify('Не вдалося скопіювати автоматично.'); }
   }));
   sendButton.addEventListener('click', async () => {
-    if (!order || !selectedFile || !$('#proofConsent').checked || secondsRemaining <= 0 || !isPaymentConfigured()) return;
+    if (!order || !selectedFile || !$('#proofConsent').checked || secondsRemaining <= 0 || !isPaymentConfigured() || !accountToken) return;
     sendButton.disabled = true;
-    sendButton.textContent = 'НАДСИЛАЄМО…';
+    sendButton.textContent = 'Надсилаємо…';
     try {
       const payload = new FormData();
       payload.set('orderId', order.id);
-      payload.set('nickname', order.nickname);
-      payload.set('email', order.email);
-      payload.set('telegram', order.telegram);
-      payload.set('plan', order.plan.name);
-      payload.set('price', `${order.plan.price} UAH`);
-      payload.set('createdAt', order.createdAt);
       payload.set('comment', $('#paymentComment').value.trim());
       payload.set('attachment', selectedFile, selectedFile.name);
       await sendOrder(payload);
-      showSuccess('Дякуємо за оплату!', 'Підтвердження надіслано адміністратору Ryzor. Після перевірки оплати з тобою зв’яжуться за вказаною поштою або Telegram. Підписка активується після підтвердження адміністратором і запуску хмарної платформи.');
+      showSuccess('Дякуємо за оплату!', `Підтвердження замовлення ${order.id} надіслано адміністратору. Після перевірки оплати підписка з’явиться у твоєму профілі. Сама хмарна гра стане доступною після запуску серверів.`);
     } catch (error) {
       setStatus($('#paymentSubmitStatus'), error.message);
-      sendButton.innerHTML = 'НАДІСЛАТИ ПІДТВЕРДЖЕННЯ <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
+      sendButton.textContent = 'Надіслати підтвердження';
       refreshSubmitState();
     }
   });
