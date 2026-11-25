@@ -65,51 +65,66 @@
   $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => switchMode(tab.dataset.mode)));
   $$('[data-switch]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.switch)));
 
-  function showAccount(user, subscription = null, latestOrder = null) {
+  function showAccount(user) {
     $('#authMain').hidden = true;
     $('#accountPanel').hidden = false;
     $('#accountName').textContent = user.fullName || 'Твій акаунт';
     $('#accountEmail').textContent = user.email || '';
     $('#accountAvatar').textContent = (user.fullName || 'R').trim().charAt(0).toLocaleUpperCase('uk-UA');
-    const planNames = { free: 'Безкоштовний', pro: 'Професійний', unlimited: 'Безлімітний' };
-    const panel = $('#accountSubscription');
-    const heading = $('strong', panel);
-    const details = $('small', panel);
-    if (subscription?.status === 'active') {
-      heading.textContent = `${planNames[subscription.plan] || subscription.plan} · активна`;
-      details.textContent = subscription.expiresAt ? `Діє до ${new Date(subscription.expiresAt * 1000).toLocaleDateString('uk-UA')}` : 'Безстроковий доступ';
-    } else if (subscription?.status === 'expired') {
-      heading.textContent = 'Термін завершився';
-      details.textContent = 'Оформи нове замовлення, щоб продовжити доступ.';
-    } else if (latestOrder && ['awaiting_proof', 'proof_submitted', 'free_requested'].includes(latestOrder.status)) {
-      heading.textContent = 'Очікує перевірки';
-      details.textContent = `Замовлення ${latestOrder.id} · ${planNames[latestOrder.plan] || latestOrder.plan}`;
-    } else if (latestOrder?.status === 'rejected') {
-      heading.textContent = 'Замовлення відхилено';
-      details.textContent = 'Звернись до підтримки, якщо потрібне уточнення.';
-    } else {
-      heading.textContent = 'Ще не оформлена';
-      details.textContent = 'Після підтвердження оплати статус з’явиться тут.';
-    }
     clearStatus();
   }
-  async function refreshAccountDetails(token) {
+  function requestedNextUrl() {
+    const raw = new URLSearchParams(location.search).get('next');
+    if (!raw) return null;
     try {
-      const result = await api('/api/auth/me', {}, token);
-      showAccount(result.user, result.subscription, result.latestOrder);
-    } catch { /* Keep the account view available; next refresh will verify the session. */ }
+      const target = new URL(raw, location.href);
+      if (target.origin !== location.origin || target.pathname.endsWith('/auth.html') || target.pathname.includes('\\')) return null;
+      return target.href;
+    } catch { return null; }
   }
-  async function finishLogin(data) {
+  function finishLogin(data) {
     sessionStorage.setItem(SESSION_KEY, data.sessionToken);
     sessionStorage.setItem('ryzor.auth.user.v1', JSON.stringify(data.user));
     showAccount(data.user);
-    const next = new URLSearchParams(location.search).get('next') || '';
-    if (/^payment\.html(?:\?[^#]*)?$/.test(next)) {
-      location.replace(next);
-      return;
+    loadAccountOverview();
+    status('Акаунт готовий.');
+    const next = requestedNextUrl();
+    if (next) setTimeout(() => location.replace(next), 450);
+  }
+  function renderAccountOverview(data) {
+    const planName = $('#accountPlanName');
+    const planMeta = $('#accountPlanMeta');
+    if (data.subscription) {
+      const names = { free: 'Безкоштовний тариф', pro: 'Професійний', unlimited: 'Безлімітний' };
+      planName.textContent = names[data.subscription.plan_code] || data.subscription.plan_code;
+      planMeta.textContent = data.subscription.ends_at ? `Активна до ${new Date(data.subscription.ends_at * 1000).toLocaleDateString('uk-UA')}` : 'Активна без кінцевої дати';
+    } else {
+      planName.textContent = 'Без активної підписки';
+      planMeta.textContent = 'Після підтвердження замовлення статус з’явиться тут.';
     }
-    await refreshAccountDetails(data.sessionToken);
-    status('Акаунт готовий. Тепер можеш повернутися на головну сторінку RYZOR.');
+    const holder = $('#accountOrders');
+    holder.replaceChildren();
+    if (!data.orders?.length) {
+      const empty = document.createElement('p'); empty.className = 'account-muted'; empty.textContent = 'Замовлень поки немає.'; holder.append(empty); return;
+    }
+    const states = { awaiting_payment: 'Очікує оплату', proof_processing: 'Надсилання підтвердження', pending_review: 'На перевірці', approved: 'Підтверджено', rejected: 'Відхилено', expired: 'Час минув' };
+    data.orders.forEach(order => {
+      const row = document.createElement('div'); row.className = 'account-order-row';
+      const top = document.createElement('div'); top.className = 'account-order-top';
+      const id = document.createElement('b'); id.textContent = order.order_id;
+      const state = document.createElement('span'); state.textContent = states[order.status] || order.status;
+      top.append(id, state);
+      const meta = document.createElement('small'); meta.textContent = `${order.plan_name} · ${new Intl.NumberFormat('uk-UA').format(order.amount_uah)} ₴ · ${new Date(order.created_at * 1000).toLocaleDateString('uk-UA')}`;
+      row.append(top, meta);
+      if (order.review_note) { const note = document.createElement('small'); note.className = 'account-order-note'; note.textContent = `Коментар адміністратора: ${order.review_note}`; row.append(note); }
+      holder.append(row);
+    });
+  }
+  async function loadAccountOverview() {
+    const token = sessionStorage.getItem(SESSION_KEY) || '';
+    if (!token || !apiBase) return;
+    try { renderAccountOverview(await api('/api/account/overview', {}, token)); }
+    catch (error) { $('#accountPlanMeta').textContent = error.message; }
   }
 
   function renderGoogleButton() {
@@ -176,6 +191,7 @@
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
     if (!pendingCredential) return status('Спочатку підтверди Google-акаунт.', true);
+    if (!$('[name=privacyConsent]', form)?.checked) return status('Перед створенням акаунта ознайомся з Політикою конфіденційності.', true);
     const data = new FormData(form);
     const fullName = String(data.get('fullName') || '').trim().replace(/\s+/g, ' ');
     const password = String(data.get('password') || '');
@@ -190,9 +206,9 @@
       const saltBytes = crypto.getRandomValues(new Uint8Array(16));
       const passwordSalt = toBase64Url(saltBytes);
       const passwordProof = await derivePasswordProof(password, passwordSalt, PASSWORD_ITERATIONS);
-      const result = await api('/api/auth/register', { credential: pendingCredential, fullName, passwordSalt, passwordProof });
+      const result = await api('/api/auth/register', { credential: pendingCredential, fullName, passwordSalt, passwordProof, privacyConsent: true });
       pendingCredential = '';
-      await finishLogin(result);
+      finishLogin(result);
     } catch (error) { status(error.message, true); }
     finally { button.disabled = false; button.innerHTML = 'Створити акаунт'; }
   });
@@ -211,7 +227,7 @@
       const challenge = await api('/api/auth/salt', { email });
       const passwordProof = await derivePasswordProof(password, challenge.salt, Number(challenge.iterations) || PASSWORD_ITERATIONS);
       const result = await api('/api/auth/login', { email, passwordProof });
-      await finishLogin(result);
+      finishLogin(result);
     } catch (error) { status(error.message, true); }
     finally { button.disabled = false; button.innerHTML = 'Увійти'; }
   });
@@ -228,21 +244,54 @@
     status('Ти вийшов з акаунта.');
   });
 
+  $('#refreshAccount')?.addEventListener('click', loadAccountOverview);
+  $('#exportAccountButton')?.addEventListener('click', async () => {
+    const token = sessionStorage.getItem(SESSION_KEY) || '';
+    const button = $('#exportAccountButton');
+    if (!token) return status('Увійди в акаунт ще раз.', true);
+    button.disabled = true;
+    try {
+      const data = await api('/api/account/export', {}, token);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = `ryzor-personal-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      status('Копію твоїх даних підготовлено.');
+    } catch (error) { status(error.message, true); }
+    finally { button.disabled = false; }
+  });
+  $('#deleteAccountButton')?.addEventListener('click', async () => {
+    const token = sessionStorage.getItem(SESSION_KEY) || '';
+    const email = String(sessionStorage.getItem('ryzor.auth.user.v1') ? JSON.parse(sessionStorage.getItem('ryzor.auth.user.v1')).email : '').toLowerCase();
+    if (!token || !email) return status('Увійди в акаунт ще раз.', true);
+    const confirmation = prompt(`Щоб видалити акаунт і пов’язані замовлення, введи email: ${email}`);
+    if (!confirmation) return;
+    if (confirmation.trim().toLowerCase() !== email) return status('Email не збігається. Видалення скасовано.', true);
+    const button = $('#deleteAccountButton'); button.disabled = true;
+    try {
+      const removal = await api('/api/auth/delete', { confirmEmail: email }, token);
+      sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem('ryzor.auth.user.v1');
+      $('#accountPanel').hidden = true; $('#authMain').hidden = false; switchMode('login');
+      const failedCopies = Number(removal.telegramCopies?.failed || 0);
+      status(failedCopies ? 'Акаунт і веб-дані видалено. Частину старих повідомлень у Telegram не вдалося видалити автоматично — звернися до адміністратора.' : 'Акаунт і пов’язані замовлення видалено. Незалежні звернення до підтримки можна видалити окремо у відповідному чаті.');
+    } catch (error) { status(error.message, true); }
+    finally { button.disabled = false; }
+  });
+
   async function restoreSession() {
     const token = sessionStorage.getItem(SESSION_KEY);
     if (!token) return;
     try {
       const result = await api('/api/auth/me', {}, token);
-      showAccount(result.user, result.subscription, result.latestOrder);
+      showAccount(result.user);
+      loadAccountOverview();
     } catch {
       sessionStorage.removeItem(SESSION_KEY);
       sessionStorage.removeItem('ryzor.auth.user.v1');
     }
   }
   restoreSession();
-  setInterval(() => {
-    const token = sessionStorage.getItem(SESSION_KEY);
-    if (token && !$('#accountPanel').hidden) refreshAccountDetails(token);
-  }, 30000);
   if (!apiBase) status('Підключення до сервера акаунтів ще не налаштоване. Після розгортання Cloudflare Worker реєстрація та вхід запрацюють.', true);
 })();

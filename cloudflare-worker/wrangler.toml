@@ -2,12 +2,19 @@ name = "ryzor-api"
 main = "worker.js"
 compatibility_date = "2026-11-25"
 
-# Replace the database_id after creating the D1 database.
 [[d1_databases]]
 binding = "DB"
 database_name = "ryzor-db"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
 
 [vars]
-# Replace with your exact GitHub Pages origin (and custom domain if used).
+# Use the exact origin only; do not include a GitHub repository path.
 ALLOWED_ORIGINS = "https://YOUR-GITHUB-USERNAME.github.io"
+PAYMENTS_ENABLED = "false"
+CLOUD_STREAMING_READY = "false"
+DATA_CONTROLLER_CONFIGURED = "false"
+PRIVACY_URL = "https://YOUR-GITHUB-USERNAME.github.io/privacy.html"
+
+[triggers]
+# Daily cleanup for expired sessions, rate-limit hashes, and old records.
+crons = ["0 3 * * *"]

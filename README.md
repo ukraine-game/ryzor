@@ -1,151 +1,145 @@
-# RYZOR — сайт і serverless API
+# Ryzor — інструкція перед публікацією
 
-Це статичний сайт для GitHub Pages та окремий Cloudflare Worker з D1. У репозиторії немає токена Telegram, ID адміністратора, паролів чи інших приватних секретів.
+Це статичний сайт для GitHub Pages із окремим serverless API на Cloudflare Workers та базою Cloudflare D1. GitHub Pages публікує лише HTML/CSS/JS і зображення; каталог `cloudflare-worker/` потрібно розгорнути окремо.
 
-## Що є у проєкті
+## Поточний стан
 
-- Головна сторінка в дизайні з наданого `chat-gpt.zip`: світла графітово-біла основа, червоні акценти, округлі картки, мобільна навігація.
-- Каталог із пошуком і фільтрами. Trackmania винесена в рекомендацію та головний банер. Натискання на гру відкриває внутрішнє вікно, а не Steam.
-- Одноразове підтвердження Telegram через `@ryzor_bot` і команду `/start`. Код прив’язаний до одного запуску та має строк дії 5 хвилин.
-- Три тарифи, сторінка оформлення, 10-хвилинний дедлайн на підтвердження платного замовлення, завантаження вкладення до 20 МБ.
-- Реєстрація: спочатку Google Identity, потім повне ім’я, пароль і повтор пароля. Вхід — пошта та пароль.
-- Особистий профіль зі статусом підписки. Підписка активується після `/approve RZ-XXXXXX` від адміністратора.
-- Двостороння підтримка: повідомлення з сайту надходить адміністратору в Telegram, `/reply RZ-XXXXXX текст` показує відповідь у веб-чаті.
-- FAQ, статус API та окремий чесний статус ігрової інфраструктури.
-- Автопідказки назв ігор у формі підтримки. Пошук працює з локальним безпечним списком назв та Steam-картинок; текст звернення не передається зовнішньому пошуковому проксі.
+- Сторінки: головна, акаунт, оплата, політика конфіденційності.
+- Реєстрація: Google Identity Services → повне ім'я → пароль і повтор пароля.
+- Вхід: email + пароль. Пароль не передається як звичайний текст: браузер обчислює PBKDF2 proof.
+- Підтримка: двосторонній чат із персональним ключем доступу; адміністратор відповідає командою `/reply RZ-XXXXXX текст`.
+- Telegram: перевірка `/start` для запиту запуску; це підтвердження Telegram, а не запуск віддаленої гри.
+- Дані акаунта можна експортувати; акаунт і окрему заявку можна видалити з інтерфейсу.
+- Усі платні замовлення вимкнені до фактичного запуску ігрової інфраструктури та перевірки платіжної моделі.
+- **Хмарного відеостримінгу та GPU-серверів у цьому репозиторії немає.** Не рекламуйте сайт як уже працюючий cloud gaming і не приймайте оплату за недоступну послугу.
 
-> **Важливо:** сам сайт ще не є хмарною ігровою інфраструктурою. Підтвердження Telegram — це перевірка Telegram-акаунта, а не запуск гри. Для реального стримінгу потрібні окремі GPU-машини, серверний оркестратор, передавання відео/аудіо та канал введення з низькою затримкою. Не рекламувати тарифи як уже доступний стримінг, поки ця частина не побудована.
+## 1. Підготувати репозиторій GitHub
 
-## 1. Публікація на GitHub Pages
+1. Розпакуйте архів і скопіюйте **вміст цієї папки** в корінь репозиторію, а не саму папку `chat-gpt` як вкладений каталог.
+2. Збережіть приховані файли та папки: `.github/workflows/deploy-pages.yml` і `.nojekyll`.
+3. Основна гілка у workflow зараз `main`. Якщо використовуєте іншу назву — змініть її у файлі workflow.
+4. У GitHub → **Settings → Secrets and variables → Actions → New repository secret** додайте `google_client_id` зі значенням Google OAuth Client ID. Це публічний Client ID, не секрет доступу; workflow лише використовує secret-запис, щоб підставити його в зібраний `config.js`.
+5. У GitHub → **Settings → Pages** оберіть **GitHub Actions** як Source. Після push до `main` сайт буде зібрано та опубліковано.
 
-1. Розпакуй ZIP і завантаж **вміст папки `ryzor-final` у корінь репозиторію**. Файл `index.html` має бути в корені репозиторію, а не всередині додаткової вкладеної папки.
-2. Переконайся, що основна гілка називається `main` (або зміни назву гілки в `.github/workflows/deploy-pages.yml`).
-3. У GitHub → **Settings → Pages → Build and deployment → Source** вибери **GitHub Actions**.
-4. У GitHub → **Settings → Secrets and variables → Actions → Secrets** створи `google_client_id`. Це значення використовується workflow для підстановки публічного Google OAuth Client ID у `config.js`.
-5. Push у `main` запускає workflow і публікує сторінку.
+Workflow виключає `cloudflare-worker/`, Markdown-документацію, `.github/` та `dist/` з опублікованих статичних файлів. Код Worker залишається у репозиторії для окремого розгортання, але не віддається відвідувачам GitHub Pages.
 
-`google_client_id` — публічний OAuth Client ID, а не секрет доступу до бота. У налаштуваннях Google Cloud Console додай точний origin GitHub Pages у **Authorized JavaScript origins** (наприклад, `https://USERNAME.github.io`) та обмеж правильним доменом.
+## 2. Заповнити публічний конфіг сайту
 
-## 2. Cloudflare D1 та Worker
+У `config.js` задайте:
 
-Потрібні Cloudflare акаунт і `wrangler` CLI. У терміналі:
+- `apiBase` — адресу розгорнутого Worker, наприклад `https://ryzor-api.<твій-піддомен>.workers.dev`;
+- `googleClientId` — workflow підставить із `google_client_id` під час деплою, тож вручну дублювати його не потрібно;
+- `paymentsEnabled` залиште `false`;
+- реквізити в `payment` не заповнюйте, поки платежі офіційно не відкриті.
+
+У `cloudflare-worker/wrangler.toml` замініть:
+
+- `database_id` на ID створеної D1 бази;
+- `ALLOWED_ORIGINS` на точний origin GitHub Pages, наприклад `https://<username>.github.io`. **Без** шляху репозиторію та без кінцевого `/`;
+- `PRIVACY_URL` на повну адресу політики, включно зі шляхом репозиторію, якщо сайт розміщено як project page: `https://<username>.github.io/<repo>/privacy.html`.
+
+## 3. Створити Cloudflare D1 та розгорнути Worker
+
+Потрібен Cloudflare account із Workers та D1. Команди виконуйте з локального термінала, у каталозі `cloudflare-worker/`, де лежить `wrangler.toml`:
 
 ```bash
-cd cloudflare-worker
 npx wrangler login
 npx wrangler d1 create ryzor-db
 ```
 
-Скопіюй `database_id` з відповіді `wrangler d1 create` у `cloudflare-worker/wrangler.toml` замість `REPLACE_WITH_D1_DATABASE_ID`.
-
-Створи таблиці (для нової бази):
+Скопіюйте виданий `database_id` у `wrangler.toml`, потім створіть таблиці:
 
 ```bash
-npx wrangler d1 execute ryzor-db --remote --file=schema.sql
+npx wrangler d1 execute ryzor-db --remote --file=./schema.sql
 ```
 
-Опублікуй Worker:
+Розгорніть API:
 
 ```bash
 npx wrangler deploy
 ```
 
-У `wrangler.toml` заміни `ALLOWED_ORIGINS` на свій точний origin GitHub Pages. Якщо використовуєш власний домен, додай його через кому. Не вказуй шлях сторінки — тільки origin, наприклад `https://USERNAME.github.io`.
+Після розгортання перевірте `https://<worker-host>/health`. Endpoint не повертає секретів; він показує доступність бази та факт налаштування Telegram/Google/стримінгу.
 
-Після deploy адреса буде приблизно такою: `https://ryzor-api.SUBDOMAIN.workers.dev`. Встав її в `apiBase` у `config.js` перед публікацією. Якщо `config.js` потрапляє в репозиторій, ця адреса не є секретом.
+## 4. Додати змінні та секрети Worker
 
-## 3. Worker Secrets та змінні
+У Cloudflare → Workers & Pages → `ryzor-api` → Settings → Variables and Secrets задайте:
 
-**GitHub Secrets не копіюються автоматично в Cloudflare.** Додай секрети окремо в Cloudflare Dashboard → Workers & Pages → `ryzor-api` → Settings → Variables and Secrets або через `wrangler secret put`.
+**Secrets (не публікувати, не додавати в `config.js`, HTML або GitHub Pages):**
 
-Потрібні секрети:
+- `MY_API_KEY_TG` — токен @ryzor_bot;
+- `ADMIN_TG` — числовий Telegram ID адміністратора;
+- `AUTH_SALT_PEPPER` — випадковий секрет для захисту login challenge;
+- `TELEGRAM_WEBHOOK_SECRET` — випадковий секрет webhook.
 
-```bash
-npx wrangler secret put MY_API_KEY_TG
-npx wrangler secret put ADMIN_TG
-npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
-npx wrangler secret put AUTH_SALT_PEPPER
+**Variables:**
+
+- `GOOGLE_CLIENT_ID` — той самий Client ID, що використовується у GitHub Actions;
+- `ALLOWED_ORIGINS` — той самий origin GitHub Pages;
+- `PRIVACY_URL` — повна публічна адреса `privacy.html`.
+- `PAYMENTS_ENABLED` = `false`;
+- `CLOUD_STREAMING_READY` = `false`;
+- `DATA_CONTROLLER_CONFIGURED` = `false` до заповнення реальних даних володільця в `privacy.html`; лише після перевірки відповідальним оператором можна змінити на `true`.
+
+Альтернатива — команда `npx wrangler secret put NAME` у каталозі Worker. Вона попросить значення без запису його у файли проєкту. **Не надсилайте Telegram-токен у чат, не комітьте `.env` та не зберігайте його в конфігурації фронтенду.**
+
+## 5. Налаштувати Google OAuth
+
+У Google Cloud Console:
+
+1. Налаштуйте OAuth consent screen та створіть OAuth Client ID типу **Web application**.
+2. У **Authorized JavaScript origins** додайте точний origin GitHub Pages, наприклад `https://<username>.github.io`.
+3. Не додавайте шлях `/repo/` у поле origin. Для цієї інтеграції використовується Google Identity Services у браузері, окремий callback URL не потрібен.
+4. Додайте той самий Client ID в GitHub Actions secret `google_client_id` і Worker variable `GOOGLE_CLIENT_ID`.
+
+Google ID token перевіряється Worker за підписом Google, аудиторією, видавцем і строком дії. Не вимикайте цю перевірку та не довіряйте профілю, отриманому лише з браузера.
+
+## 6. Налаштувати Telegram webhook
+
+Після розгортання Worker встановіть webhook для URL:
+
+`https://<worker-host>/telegram/webhook`
+
+Використайте Telegram Bot API `setWebhook` і передайте `TELEGRAM_WEBHOOK_SECRET` як `secret_token`. Виконуйте це в захищеному середовищі, не публікуйте URL із токеном бота та не додавайте його в репозиторій. У Cloudflare змінна `TELEGRAM_WEBHOOK_SECRET` має дослівно збігатися зі значенням, заданим під час `setWebhook`.
+
+Адміністратор має відкрити приватний чат із @ryzor_bot і натиснути `/start`. Команди:
+
+```text
+/reply RZ-XXXXXX Текст відповіді
+/close RZ-XXXXXX
+/open RZ-XXXXXX
+/approve RZ-XXXXXX
+/reject RZ-XXXXXX причина
+/privacy
 ```
 
-Під час кожної команди CLI попросить ввести значення безпосередньо в терміналі. Не вставляй токен у код, чат, README, GitHub commit або `config.js`.
+`/approve` активує підписку лише для замовлення, яке має статус `pending_review`. Платне замовлення не буде активоване, доки серверні прапорці оплати та стримінгу залишаються `false`.
 
-Додай звичайні Worker variables:
+## 7. Політика конфіденційності — обов'язково перед публікацією
 
-- `GOOGLE_CLIENT_ID` — той самий Google Web Client ID, який задано в GitHub Secret `google_client_id`.
-- `ALLOWED_ORIGINS` — точний origin GitHub Pages та/або власного домену.
+Відкрийте `privacy.html` і замініть усі квадратні дужки на фактичні реквізити **реального володільця персональних даних**:
 
-`ADMIN_TG` — це числовий Telegram ID адміністратора. Команди адміністратора приймаються лише в приватному чаті з цим ID.
+- повне ім'я відповідальної фізичної особи/ФОП або повну назву юридичної особи;
+- робочу адресу електронної пошти для запитів щодо персональних даних;
+- адресу для офіційної кореспонденції;
+- контакт для звернень про реалізацію прав користувача.
 
-`AUTH_SALT_PEPPER` — згенеруй окремий випадковий секрет (не використовуй пароль від Google чи Telegram). Не змінюй його після запуску реєстрацій, інакше буде порушено однаковість фіктивної солі для невідомих email під час входу.
+Бренд `Ryzor` сам по собі не визначає, хто юридично є володільцем даних. Не публікуйте сторінку з незаповненими полями й не вмикайте збір даних до того, як відповідальна особа перевірить документ. Політика підготовлена за поточним кодом і не замінює юридичну перевірку фактичного оператора.
 
-## 4. Telegram webhook
+## 8. Передпублікаційний чекліст
 
-Спочатку переконайся, що Worker вже розгорнутий і секрет `TELEGRAM_WEBHOOK_SECRET` створений. Потім виконай запит до Telegram Bot API, підставивши свій токен, Worker URL і webhook secret. Не зберігай ці значення в репозиторії.
+- [ ] Вказані реальні дані володільця у `privacy.html`, контакт перевірено.
+- [ ] `DATA_CONTROLLER_CONFIGURED` в Worker змінено на `true` лише після фактичного заповнення й перевірки політики.
+- [ ] Google OAuth origin відповідає домену GitHub Pages.
+- [ ] D1 schema застосована до **remote** бази.
+- [ ] У Worker налаштовані всі Secrets/Variables.
+- [ ] `config.js` містить правильний `apiBase`.
+- [ ] `ALLOWED_ORIGINS` і `PRIVACY_URL` відповідають фактичній адресі Pages.
+- [ ] `/health` повертає `database: true`, `telegramConfigured: true`, `googleConfigured: true`.
+- [ ] Перевірені тестова реєстрація, вхід, підтримка, Telegram webhook, експорт і видалення тестового акаунта.
+- [ ] Платежі залишаються вимкненими до готовності реального сервісу, правомірного отримувача коштів і процедури повернення.
+- [ ] Не заявляється про доступний хмарний запуск, доки не підключені й не протестовані GPU-сервери та відеостримінг.
 
-```bash
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
-  -d "url=https://ryzor-api.<YOUR_SUBDOMAIN>.workers.dev/telegram/webhook" \
-  -d "secret_token=<YOUR_WEBHOOK_SECRET>"
-```
+## Важливо про оплату та хмарний запуск
 
-Бот має бути доступний як `@ryzor_bot`. Спочатку відкрий приватний чат із ботом і натисни **Start**. Після налаштування webhook сайт зможе перевіряти `/start` з одноразовим параметром.
-
-### Команди адміністратора
-
-- `/reply RZ-XXXXXX Текст відповіді` — відповісти у веб-чат заявки.
-- `/close RZ-XXXXXX` — закрити заявку.
-- `/open RZ-XXXXXX` — знову відкрити заявку.
-- `/orders` — показати останні замовлення, що очікують перевірки.
-- `/approve RZ-XXXXXX` — підтвердити замовлення й активувати план в акаунті.
-- `/reject RZ-XXXXXX Причина` — відхилити замовлення.
-
-Номер заявки можна скопіювати з повідомлення, яке бот надсилає адміністратору. Команди `/approve` та `/reject` стосуються платіжних замовлень, `/reply`, `/close` та `/open` — звернень підтримки.
-
-## 5. Налаштування Google та `config.js`
-
-`config.js` має містити тільки публічні налаштування:
-
-```js
-window.RYZOR_CONFIG = {
-  apiBase: "https://ryzor-api.YOUR-SUBDOMAIN.workers.dev",
-  googleClientId: "",
-  payment: {
-    bank: "",
-    recipient: "",
-    cardNumber: "",
-    iban: ""
-  }
-};
-```
-
-Workflow автоматично підставляє `googleClientId` з GitHub Secret `google_client_id` під час деплою. У Worker окремо задай variable `GOOGLE_CLIENT_ID`, інакше сервер не зможе перевірити Google ID token.
-
-У Google Cloud Console створи **OAuth Client ID → Web application**, додай точні авторизовані JavaScript origins та перевір, що Client ID однаковий у двох місцях. Client ID можна показувати у браузері; приватний OAuth Client Secret для цієї реалізації не потрібен і не має додаватися у фронтенд.
-
-## 6. Реквізити та підтвердження платежу
-
-У `config.js` можна вказати лише перевірені публічні реквізити отримувача. Додавати їх і відкривати оплату має власник рахунку або відповідальна доросла особа. Не вставляй у сайт PIN, CVV, пароль банку чи дані картки платника.
-
-Сума тарифу перевіряється ще раз на Worker — значення з браузера не є джерелом ціни. Платне замовлення має серверний ID і час завершення через 10 хвилин. Після прийняття файла бот надсилає його лише `ADMIN_TG`; D1 зберігає метадані, а не вміст файла. Максимальний розмір — 20 МБ.
-
-Після надходження підтвердження адміністратор перевіряє платіж і виконує `/approve RZ-XXXXXX`. Профіль отримає активний план на 30 днів. Для безкоштовного плану також створюється замовлення, яке адміністратор може підтвердити.
-
-## 7. Межі реалізації та безпека
-
-- Не зберігай `MY_API_KEY_TG`, `ADMIN_TG`, `TELEGRAM_WEBHOOK_SECRET` або `AUTH_SALT_PEPPER` у будь-якому файлі, що віддається GitHub Pages.
-- `google_client_id` у GitHub Actions потрібен для автоматичної підстановки публічного Client ID. Окремий `GOOGLE_CLIENT_ID` у Worker потрібен для перевірки токенів.
-- Усі приватні операції Worker обмежені CORS allowlist та перевіркою Bearer session token або webhook secret.
-- Пароль користувача не зберігається відкритим текстом; браузер обчислює PBKDF2 proof, а Worker зберігає хеш proof.
-- Підтримка має персональний випадковий ключ доступу; він зберігається в цьому браузері. Не очищай дані сайту, поки потрібна історія заявки.
-- Каталожні картинки та шрифт завантажуються зі Steam CDN та Google Fonts відповідно. Це означає, що браузер відвідувача звертається до цих зовнішніх доменів.
-- До публічного приймання реальних платежів додай політику приватності, умови користування та перевір реальні банківські реквізити.
-- Worker і D1 мають бути налаштовані до активації функцій реєстрації, підтримки, Telegram, оплати й підтвердження тарифу.
-
-## Перевірки перед публікацією
-
-1. `GET <apiBase>/health` повертає `{"ok":true,"service":"ryzor-api"}`.
-2. Перевір Google sign-in на домені, який внесений до Authorized JavaScript origins.
-3. Перевір створення заявки підтримки й `/reply` тестовим зверненням.
-4. Перевір Telegram `/start` тестовим одноразовим посиланням.
-5. Перевір створення тестового замовлення, отримання файла ботом і `/approve` лише після тестової перевірки.
-6. Не оголошуй хмарні ігри доступними, доки не підключено реальну GPU/streaming інфраструктуру.
+У цьому репозиторії немає серверів із GPU, системи видачі ігрових сесій чи відеостримінгу. Перевірка `/start` лише підтверджує, що відвідувач взаємодіяв із Telegram-ботом. Вона не запускає гру. Тому `paymentsEnabled`, `PAYMENTS_ENABLED` і `CLOUD_STREAMING_READY` залишаються вимкненими. Не приймайте оплату за функцію, якої ще немає. Будь-який майбутній платний запуск має налаштовувати фактичний дорослий/юридичний оператор із належними платіжними реквізитами, умовами підписки й підтримкою повернень.

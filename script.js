@@ -73,8 +73,6 @@
       if (!card.hidden) visible++;
     });
     $('#emptyGames').hidden = visible > 0;
-    const count = $('#visibleGameCount');
-    if (count) count.textContent = String(visible).padStart(2, '0');
   }
   filters.forEach(button => button.addEventListener('click', () => {
     activeFilter = button.dataset.filter;
@@ -194,132 +192,6 @@
     }
   });
 
-  // API health is distinct from game-server readiness; the site never pretends streaming is online.
-  const apiStatusText = $('#apiStatusText');
-  const apiStatusHint = $('#apiStatusHint');
-  const apiStatusTag = $('#apiStatusTag');
-  const apiStatusDot = $('#apiStatusDot');
-  async function checkApiHealth() {
-    if (!apiBase) {
-      if (apiStatusText) apiStatusText.textContent = 'Не підключено';
-      if (apiStatusHint) apiStatusHint.textContent = 'Адміністратор ще не вказав адресу Worker.';
-      if (apiStatusTag) apiStatusTag.textContent = 'ОЧІКУЄ';
-      apiStatusDot?.classList.add('status-offline');
-      return;
-    }
-    try {
-      const response = await fetch(`${apiBase}/health`, { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
-      const data = await response.json();
-      if (!response.ok || data.ok !== true) throw new Error('API не відповідає');
-      if (apiStatusText) apiStatusText.textContent = 'Підключено';
-      if (apiStatusHint) apiStatusHint.textContent = 'Сервіс обробки акаунтів і звернень доступний.';
-      if (apiStatusTag) apiStatusTag.textContent = 'ПРАЦЮЄ';
-      apiStatusDot?.classList.add('status-online');
-      apiStatusDot?.classList.remove('status-offline');
-    } catch {
-      if (apiStatusText) apiStatusText.textContent = 'Недоступний';
-      if (apiStatusHint) apiStatusHint.textContent = 'Перевір підключення або налаштування Worker.';
-      if (apiStatusTag) apiStatusTag.textContent = 'ПОМИЛКА';
-      apiStatusDot?.classList.add('status-offline');
-      apiStatusDot?.classList.remove('status-online');
-    }
-  }
-  checkApiHealth();
-  setInterval(() => { if (!document.hidden) checkApiHealth(); }, 60000);
-
-  // Curated Steam suggestions are local: no typed support text is sent to a third-party search proxy.
-  // Only supported, non-weapon-focused titles are included here.
-  const supportGames = [
-    { name: 'Grand Mountain Adventure 2', appId: '3605330', category: 'Пригоди' },
-    { name: 'Grand Mountain Adventure: Wonderlands', appId: '1247360', category: 'Пригоди' },
-    { name: 'Trackmania', appId: '2225070', category: 'Гонки' },
-    { name: 'Euro Truck Simulator 2', appId: '227300', category: 'Симулятор' },
-    { name: 'City Car Driving', appId: '493490', category: 'Симулятор' },
-    { name: 'Farming Simulator 25', appId: '2300320', category: 'Симулятор' },
-    { name: 'EA SPORTS FC 26', appId: '3405690', category: 'Спорт' },
-    { name: 'Supermarket Simulator', appId: '2670630', category: 'Менеджмент' },
-    { name: 'MECCHA CHAMELEON', appId: '4704690', category: 'Мультиплеєр' },
-    { name: 'Stardew Valley', appId: '413150', category: 'Симулятор життя' },
-    { name: 'PowerWash Simulator', appId: '1290000', category: 'Симулятор' },
-    { name: 'Unpacking', appId: '1135690', category: 'Головоломка' },
-    { name: 'House Flipper', appId: '613100', category: 'Симулятор' }
-  ];
-  const categorySelect = $('#supportCategory');
-  const gameField = $('#supportGameField');
-  const gameInput = $('#supportGame');
-  const suggestionsBox = $('#steamSuggestions');
-  let suggestionIndex = -1;
-  let visibleSuggestions = [];
-  function closeSuggestions() {
-    if (!suggestionsBox || !gameInput) return;
-    suggestionsBox.hidden = true;
-    gameInput.setAttribute('aria-expanded', 'false');
-    suggestionIndex = -1;
-  }
-  function selectSupportGame(game) {
-    gameInput.value = game.name;
-    gameInput.dataset.appId = game.appId;
-    gameInput.dataset.selected = 'true';
-    closeSuggestions();
-  }
-  function renderSuggestions() {
-    if (!gameInput || !suggestionsBox) return;
-    const query = gameInput.value.trim().toLocaleLowerCase('uk-UA');
-    suggestionsBox.replaceChildren();
-    visibleSuggestions = query.length < 2 ? [] : supportGames.filter(game => game.name.toLocaleLowerCase('uk-UA').includes(query)).slice(0, 6);
-    if (!visibleSuggestions.length) { closeSuggestions(); return; }
-    visibleSuggestions.forEach((game, index) => {
-      const option = document.createElement('button');
-      option.type = 'button';
-      option.className = 'steam-suggestion';
-      option.setAttribute('role', 'option');
-      option.setAttribute('aria-selected', String(index === suggestionIndex));
-      const image = document.createElement('img');
-      image.src = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${game.appId}/header.jpg`;
-      image.alt = '';
-      image.loading = 'lazy';
-      image.referrerPolicy = 'no-referrer';
-      const details = document.createElement('span');
-      const title = document.createElement('strong'); title.textContent = game.name;
-      const kind = document.createElement('small'); kind.textContent = game.category;
-      details.append(title, kind);
-      option.append(image, details);
-      option.addEventListener('click', () => selectSupportGame(game));
-      suggestionsBox.append(option);
-    });
-    suggestionsBox.hidden = false;
-    gameInput.setAttribute('aria-expanded', 'true');
-  }
-  function updateSupportGameField() {
-    if (!categorySelect || !gameField || !gameInput) return;
-    const required = categorySelect.value === 'Замовлення гри';
-    gameField.hidden = !required;
-    gameInput.required = required;
-    if (!required) {
-      gameInput.value = '';
-      delete gameInput.dataset.appId;
-      delete gameInput.dataset.selected;
-      closeSuggestions();
-    }
-  }
-  categorySelect?.addEventListener('change', updateSupportGameField);
-  gameInput?.addEventListener('input', () => {
-    delete gameInput.dataset.appId;
-    delete gameInput.dataset.selected;
-    renderSuggestions();
-  });
-  gameInput?.addEventListener('keydown', event => {
-    if (suggestionsBox?.hidden) return;
-    if (event.key === 'ArrowDown') { event.preventDefault(); suggestionIndex = Math.min(suggestionIndex + 1, visibleSuggestions.length - 1); renderSuggestions(); }
-    else if (event.key === 'ArrowUp') { event.preventDefault(); suggestionIndex = Math.max(suggestionIndex - 1, 0); renderSuggestions(); }
-    else if (event.key === 'Enter' && suggestionIndex >= 0 && visibleSuggestions[suggestionIndex]) { event.preventDefault(); selectSupportGame(visibleSuggestions[suggestionIndex]); }
-    else if (event.key === 'Escape') closeSuggestions();
-  });
-  document.addEventListener('click', event => {
-    if (gameField && !gameField.contains(event.target)) closeSuggestions();
-  });
-  updateSupportGameField();
-
   // Support inbox. Only random ticket credentials are stored locally; the Worker stores ticket content in D1.
   const STORAGE_KEY = 'ryzor.support.v1';
   function getSavedTickets() {
@@ -401,7 +273,7 @@
     try {
       const result = await api('/api/support/create', {
         method: 'POST',
-        body: JSON.stringify({ nickname: data.get('nickname'), email: data.get('email'), category: data.get('category'), gameName: data.get('gameName') || '', message: data.get('message') })
+        body: JSON.stringify({ nickname: data.get('nickname'), email: data.get('email'), category: data.get('category'), game: data.get('game'), message: data.get('message'), privacyConsent: data.get('privacyConsent') === 'on' })
       });
       const tickets = getSavedTickets();
       tickets.unshift({ id: result.ticketId, key: result.accessKey, category: String(data.get('category')), status: 'open' });
@@ -442,6 +314,149 @@
   const initialTickets = getSavedTickets();
   if (initialTickets.length) selectTicket(initialTickets[0].id);
   ticketRefresh = setInterval(() => { if (!document.hidden && selectedTicketId) selectTicket(selectedTicketId); }, 15000);
+
+
+  // A local allow-list of Steam catalog suggestions. Typed text stays in this browser;
+  // only the selected title is included in the support ticket.
+  const ticketGameInput = $('#ticketGame');
+  const gameSuggestions = $('#gameSuggestions');
+  const steamSuggestions = [
+    { name: 'Grand Mountain Adventure: Wonderlands', app: '1247360' },
+    { name: 'Grand Mountain Adventure 2', app: '3605330' },
+    { name: 'Euro Truck Simulator 2', app: '227300' },
+    { name: 'Trackmania', app: '2225070' },
+    { name: 'City Car Driving', app: '493490' },
+    { name: 'Farming Simulator 25', app: '2300320' },
+    { name: 'EA SPORTS FC 26', app: '3405690' },
+    { name: 'Supermarket Simulator', app: '2670630' },
+    { name: 'PowerWash Simulator', app: '1290000' },
+    { name: 'Unpacking', app: '1135690' },
+    { name: 'Stardew Valley', app: '413150' },
+    { name: 'House Flipper', app: '613100' }
+  ];
+  let activeSuggestionIndex = -1;
+  let filteredSuggestions = [];
+  function closeGameSuggestions() {
+    if (!gameSuggestions || !ticketGameInput) return;
+    gameSuggestions.hidden = true;
+    gameSuggestions.replaceChildren();
+    ticketGameInput.setAttribute('aria-expanded', 'false');
+    ticketGameInput.removeAttribute('aria-activedescendant');
+    activeSuggestionIndex = -1;
+  }
+  function renderGameSuggestions() {
+    if (!ticketGameInput || !gameSuggestions) return;
+    const query = ticketGameInput.value.trim().toLocaleLowerCase('uk-UA');
+    filteredSuggestions = query.length >= 2
+      ? steamSuggestions.filter(item => item.name.toLocaleLowerCase('uk-UA').includes(query)).slice(0, 6)
+      : [];
+    gameSuggestions.replaceChildren();
+    if (!filteredSuggestions.length) return closeGameSuggestions();
+    filteredSuggestions.forEach((game, index) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.id = `game-suggestion-${index}`;
+      option.className = 'game-suggestion';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(index === activeSuggestionIndex));
+      const cover = document.createElement('img');
+      cover.src = `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${game.app}/header.jpg`;
+      cover.alt = '';
+      cover.loading = 'lazy';
+      cover.referrerPolicy = 'no-referrer';
+      const title = document.createElement('span');
+      title.textContent = game.name;
+      const label = document.createElement('small');
+      label.textContent = 'Steam';
+      option.append(cover, title, label);
+      option.addEventListener('click', () => {
+        ticketGameInput.value = game.name;
+        ticketGameInput.dataset.steamAppId = game.app;
+        closeGameSuggestions();
+      });
+      gameSuggestions.append(option);
+    });
+    gameSuggestions.hidden = false;
+    ticketGameInput.setAttribute('aria-expanded', 'true');
+  }
+  ticketGameInput?.addEventListener('input', () => {
+    delete ticketGameInput.dataset.steamAppId;
+    activeSuggestionIndex = -1;
+    renderGameSuggestions();
+  });
+  ticketGameInput?.addEventListener('keydown', event => {
+    if (gameSuggestions?.hidden || !filteredSuggestions.length) return;
+    if (event.key === 'ArrowDown') { event.preventDefault(); activeSuggestionIndex = (activeSuggestionIndex + 1) % filteredSuggestions.length; renderGameSuggestions(); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); activeSuggestionIndex = (activeSuggestionIndex - 1 + filteredSuggestions.length) % filteredSuggestions.length; renderGameSuggestions(); }
+    else if (event.key === 'Enter' && activeSuggestionIndex >= 0) { event.preventDefault(); const game = filteredSuggestions[activeSuggestionIndex]; ticketGameInput.value = game.name; ticketGameInput.dataset.steamAppId = game.app; closeGameSuggestions(); }
+    else if (event.key === 'Escape') closeGameSuggestions();
+  });
+  document.addEventListener('click', event => { if (gameSuggestions && !gameSuggestions.contains(event.target) && event.target !== ticketGameInput) closeGameSuggestions(); });
+
+  // Public service status: API, D1, Telegram configuration and streaming are reported separately.
+  const statusNodes = {
+    dot: $('#serviceStatusDot'), title: $('#serviceStatusTitle'), text: $('#serviceStatusText'),
+    api: $('#apiStatusValue'), db: $('#databaseStatusValue'), telegram: $('#telegramStatusValue'), privacy: $('#privacyStatusValue'), stream: $('#streamStatusValue')
+  };
+  function setStatusValue(node, value, ok = false) {
+    if (!node) return;
+    node.textContent = value;
+    node.classList.toggle('is-ok', ok);
+    node.classList.toggle('is-warn', !ok);
+  }
+  async function refreshServiceStatus() {
+    if (!statusNodes.api) return;
+    if (!apiBase) {
+      setStatusValue(statusNodes.api, 'Не підключено');
+      setStatusValue(statusNodes.db, '—'); setStatusValue(statusNodes.telegram, '—'); setStatusValue(statusNodes.privacy, '—'); setStatusValue(statusNodes.stream, 'Не запущено');
+      statusNodes.title.textContent = 'API ще не налаштовано';
+      statusNodes.text.textContent = 'Власник Ryzor має розгорнути Worker і додати адресу в config.js. Хмарний запуск ігор поки недоступний.';
+      return;
+    }
+    try {
+      const response = await fetch(`${apiBase}/health`, { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } });
+      const data = await response.json();
+      if (!response.ok || data.ok !== true) throw new Error('API не відповідає');
+      setStatusValue(statusNodes.api, 'Працює', true);
+      setStatusValue(statusNodes.db, data.database ? 'Працює' : 'Недоступна', Boolean(data.database));
+      setStatusValue(statusNodes.telegram, data.telegramConfigured ? 'Налаштовано' : 'Не налаштовано', Boolean(data.telegramConfigured));
+      setStatusValue(statusNodes.privacy, data.privacyConfigured ? 'Заповнено' : 'Не заповнено', Boolean(data.privacyConfigured));
+      setStatusValue(statusNodes.stream, data.streamingReady ? 'Доступний' : 'Не запущено', Boolean(data.streamingReady));
+      statusNodes.title.textContent = !data.privacyConfigured ? 'Потрібно заповнити дані володільця' : (data.streamingReady ? 'Інфраструктура готова' : 'API працює, але ігрові сервери ще не запущені');
+      statusNodes.text.textContent = !data.privacyConfigured ? 'Форми реєстрації, підтримки та запуску заблоковані до заповнення даних відповідального володільця в privacy.html. Віддалений запуск ігор поки недоступний.' : (data.streamingReady ? 'Статус перевірено через Ryzor API.' : 'API працює; віддалений запуск ігор ще недоступний. Приймання оплат вимкнене.');
+      if (statusNodes.dot) statusNodes.dot.classList.toggle('is-online', Boolean(data.database));
+    } catch {
+      setStatusValue(statusNodes.api, 'Недоступно');
+      setStatusValue(statusNodes.db, 'Немає зв’язку');
+      setStatusValue(statusNodes.telegram, 'Невідомо');
+      setStatusValue(statusNodes.privacy, 'Невідомо');
+      setStatusValue(statusNodes.stream, 'Не запущено');
+      statusNodes.title.textContent = 'Не вдалося перевірити API';
+      statusNodes.text.textContent = 'Перевір адресу Worker, CORS та доступність Cloudflare. Статус ігрових серверів залишається невідомим.';
+    }
+  }
+  refreshServiceStatus();
+  window.addEventListener('focus', refreshServiceStatus);
+  setInterval(() => { if (!document.hidden) refreshServiceStatus(); }, 60000);
+
+  // Users can permanently remove a support thread they own, using the private access key.
+  $('#deleteTicket')?.addEventListener('click', async () => {
+    const ticket = activeTicket();
+    if (!ticket || !confirm(`Видалити звернення ${ticket.id} та всю історію повідомлень? Цю дію не можна скасувати.`)) return;
+    const button = $('#deleteTicket');
+    button.disabled = true;
+    try {
+      const removal = await api('/api/support/delete', { method: 'POST', body: JSON.stringify({ ticketId: ticket.id, accessKey: ticket.key }) });
+      saveTickets(getSavedTickets().filter(item => item.id !== ticket.id));
+      selectedTicketId = '';
+      $('#ticketChat').hidden = true;
+      renderTicketList();
+      const failedCopies = Number(removal.telegramCopies?.failed || 0);
+      setSupportStatus(failedCopies ? `Веб-дані звернення ${ticket.id} видалено. Частину Telegram-повідомлень не вдалося стерти автоматично — звернися до адміністратора.` : `Звернення ${ticket.id} та доступні копії повідомлень видалено.` , failedCopies > 0);
+      notify('Звернення видалено.');
+    } catch (error) { notify(error.message); }
+    finally { button.disabled = false; }
+  });
 
   $('#year').textContent = String(new Date().getFullYear());
 })();

@@ -68,6 +68,7 @@
               <label class="field"><span>Придумай пароль</span><input name="password" type="password" autocomplete="new-password" placeholder="Мінімум 10 символів" minlength="10" maxlength="128" required></label>
               <label class="field"><span>Повтори пароль</span><input name="passwordConfirm" type="password" autocomplete="new-password" placeholder="Введи пароль ще раз" minlength="10" maxlength="128" required></label>
               <div class="password-rule">Не використовуй пароль від Google, пошти чи інших сервісів.</div>
+              <label class="privacy-consent"><input type="checkbox" name="privacyConsent" required><span>Я ознайомився(-лася) з <a href="privacy.html" target="_blank" rel="noopener noreferrer">Політикою конфіденційності</a>.</span></label>
               <button class="submit-button" type="submit">Створити акаунт</button>
             </form>
             <p class="switch-note">Вже маєш акаунт? <button type="button" class="inline-action" data-switch="login">Увійти</button></p>
@@ -79,16 +80,20 @@
           <div class="eyebrow">SIGNED IN</div>
           <h2 id="accountName">Твій акаунт</h2>
           <p id="accountEmail" class="account-email"></p>
-          <div class="account-meta"><span>Статус акаунта</span><b>Активний профіль</b></div><div class="account-subscription" id="accountSubscription"><span>Підписка</span><strong>Ще не оформлена</strong><small>Після підтвердження оплати статус оновиться тут.</small></div>
+          <div class="account-meta"><span>Статус</span><b>Активний профіль</b></div>
+          <section class="account-subscription" aria-live="polite"><div class="account-section-head"><b>Підписка</b><button type="button" id="refreshAccount" class="inline-action">Оновити</button></div><p id="accountPlanName">Без активної підписки</p><small id="accountPlanMeta">Після підтвердження замовлення статус з’явиться тут.</small></section>
+          <section class="account-orders"><b>Останні замовлення</b><div id="accountOrders"><p class="account-muted">Замовлень поки немає.</p></div></section>
+          <button type="button" class="account-export-button" id="exportAccountButton">Завантажити мої дані</button>
           <a href="index.html" class="submit-button account-home">На головну</a>
           <button type="button" class="logout-button" id="logoutButton">Вийти з акаунта</button>
+          <button type="button" class="delete-account-button" id="deleteAccountButton">Видалити акаунт і дані</button>
         </section>
 
         <div class="auth-status" id="authStatus" role="status" aria-live="polite" hidden></div>
         <div class="card-bottomline"><span>RYZOR ACCOUNT / 2026</span><span>YOUR DATA STAYS YOURS</span></div>
       </section>
     </section>
-    <footer class="auth-footer"><span>© Ryzor</span><a href="index.html#support">Підтримка</a></footer>
+    <footer class="auth-footer"><span>© Ryzor</span><a href="index.html#support">Підтримка</a><a href="privacy.html">Конфіденційність</a></footer>
   </main>
 </body>
 </html>

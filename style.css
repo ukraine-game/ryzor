@@ -66,51 +66,8 @@ main{padding-bottom:24px}.footer{max-width:1240px;margin:0 auto;padding:36px 24p
 .modal-backdrop{align-items:end;padding:8px}.game-modal{grid-template-columns:1fr;max-height:92vh;overflow:auto;border-radius:28px}.modal-art{min-height:170px;height:170px}.modal-content{padding:28px 24px 26px}
 .mobile-dock{position:fixed;z-index:25;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:4px;padding:6px;border-radius:999px;background:rgba(16,18,26,.88);backdrop-filter:blur(14px);box-shadow:0 16px 40px -10px rgba(0,0,0,.5)}.mobile-dock a{padding:10px 18px;border-radius:999px;color:#fff;font-size:14px;font-weight:500}.mobile-dock a:active{background:var(--red)}body{padding-bottom:84px}.toast{bottom:92px}.final-strip{padding:40px 24px}}
 
-/* Доповнення до наданої дизайн-системи: статус, FAQ, рекомендація та локальні підказки ігор. */
-.recommended-label{display:inline-flex;align-items:center;margin:10px 0 4px;padding:5px 10px;border-radius:999px;background:rgba(221,15,25,.08);color:var(--red2);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-.game-card:has(.recommended-label) .game-open>strong{margin-top:0}
-.status-section{padding-top:76px;padding-bottom:76px}
-.status-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.status-card{display:grid;grid-template-columns:10px minmax(0,1fr) auto;align-items:start;gap:16px;padding:25px 26px;border-radius:22px;background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
-.status-indicator{width:9px;height:9px;margin-top:7px;border-radius:50%;background:#d59a37;box-shadow:0 0 0 4px rgba(213,154,55,.12)}
-.status-indicator.status-online{background:#269b5e;box-shadow:0 0 0 4px rgba(38,155,94,.12)}
-.status-indicator.status-offline{background:var(--red);box-shadow:0 0 0 4px rgba(221,15,25,.10)}
-.status-card small{display:block;margin-bottom:5px;color:var(--mute);font-size:11px;font-weight:600;letter-spacing:.09em}
-.status-card strong{display:block;font-size:18px;font-weight:600;letter-spacing:-.025em}
-.status-card p{margin-top:5px;color:var(--mute);font-size:13px}
-.status-tag{padding:6px 9px;border-radius:999px;background:var(--bg);color:var(--mute);font-size:10px;letter-spacing:.06em;white-space:nowrap}
-.faq-section{padding-top:72px;padding-bottom:100px}
-.faq-list{max-width:880px;margin-left:auto;display:grid;gap:8px}
-.faq-list details{padding:0 22px;border:1px solid var(--line);border-radius:17px;background:#fff}
-.faq-list summary{position:relative;display:flex;align-items:center;min-height:62px;padding:14px 30px 14px 0;cursor:pointer;list-style:none;font-weight:600;letter-spacing:-.015em}
-.faq-list summary::-webkit-details-marker{display:none}
-.faq-list summary::after{content:'+';position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:23px;color:var(--red);font-weight:400}
-.faq-list details[open] summary::after{content:'−'}
-.faq-list details p{padding:0 32px 20px 0;color:var(--mute);font-size:14px;max-width:720px}
-.support-game-field{position:relative;margin-bottom:18px}
-.support-game-field>label{display:block;margin-bottom:8px;font-size:14px;font-weight:500;color:var(--ink2)}
-.support-game-field>small{display:block;margin-top:7px;color:var(--mute);font-size:12px}
-.support-game-autocomplete{position:relative}
-.support-game-autocomplete input{margin-top:0}
-.steam-suggestions{position:absolute;left:0;right:0;top:calc(100% + 7px);z-index:15;max-height:330px;overflow:auto;padding:6px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 18px 44px -18px rgba(16,18,26,.28)}
-.steam-suggestion{display:flex;width:100%;align-items:center;gap:12px;padding:8px;border:0;border-radius:11px;background:#fff;text-align:left}
-.steam-suggestion:hover,.steam-suggestion[aria-selected="true"]{background:var(--bg)}
-.steam-suggestion img{width:76px;height:36px;flex:none;border-radius:7px;object-fit:cover;background:#e6e7eb}
-.steam-suggestion span{display:grid;gap:1px;min-width:0}
-.steam-suggestion strong{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.steam-suggestion small{color:var(--mute);font-size:11px}
-.chat-bubble.from-admin{border:1px solid rgba(221,15,25,.12)}
-@media(max-width:760px){
-  .status-section{padding-top:58px;padding-bottom:58px}
-  .status-grid{grid-template-columns:1fr}
-  .status-card{grid-template-columns:10px minmax(0,1fr);padding:20px;gap:12px}
-  .status-tag{grid-column:2;justify-self:start;margin-top:2px}
-  .faq-section{padding-top:56px;padding-bottom:72px}
-  .faq-list{margin-left:0;width:100%}
-  .faq-list details{padding:0 17px}
-  .faq-list summary{min-height:58px;font-size:14px}
-  .steam-suggestions{max-height:260px}
-}
-
-.catalog-count{flex:none;color:var(--mute);font-size:12px;white-space:nowrap}.catalog-count b{color:var(--ink);font-weight:600}
-@media(max-width:760px){.catalog-count{align-self:flex-start;margin-top:-8px}}
+.support-privacy-consent{display:flex!important;gap:10px;align-items:flex-start;margin:2px 0 18px!important;color:var(--mute)!important;font-size:13px!important;font-weight:400!important}.support-privacy-consent input{flex:none;width:18px;height:18px;margin:2px 0 0;accent-color:var(--red)}.support-privacy-consent span{display:block;line-height:1.5}.support-privacy-consent a,.modal-note a{color:var(--red);text-decoration:underline;text-underline-offset:3px}.chat-head-actions{display:flex;align-items:center;gap:8px}.chat-head-actions #deleteTicket{width:auto;padding:8px 10px;background:transparent;color:var(--red);font-size:13px}.chat-head-actions #deleteTicket:hover{background:#fff0f1}
+.game-suggestions{position:relative;z-index:10;margin-top:4px;padding:6px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 12px 30px rgba(16,18,26,.12)}.game-suggestion{display:grid;grid-template-columns:76px 1fr auto;align-items:center;gap:10px;width:100%;padding:7px;border:0;border-radius:10px;background:#fff;text-align:left}.game-suggestion:hover,.game-suggestion[aria-selected=true]{background:var(--bg)}.game-suggestion img{width:76px;aspect-ratio:460/215;object-fit:cover;border-radius:7px}.game-suggestion span{font-size:13px;font-weight:600}.game-suggestion small{color:var(--mute);font-size:11px}
+.faq-list{display:grid;gap:10px;max-width:940px;margin:0 auto}.faq-list details{padding:20px 24px;border:1px solid var(--line);border-radius:18px;background:#fff}.faq-list summary{cursor:pointer;list-style:none;font-weight:600;display:flex;justify-content:space-between;gap:18px;align-items:center}.faq-list summary::-webkit-details-marker{display:none}.faq-list summary::after{content:'+';font-size:22px;font-weight:400;color:var(--red)}.faq-list details[open] summary::after{content:'−'}.faq-list p{max-width:760px;margin-top:14px;color:var(--mute);font-size:14px}.faq-list a{color:var(--red);text-decoration:underline}
+.status-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.status-badges span{padding:6px 10px;border-radius:999px;background:var(--bg);color:var(--mute);font-size:12px}.status-badges b{color:var(--ink);font-weight:600}.status-badges b.is-ok{color:#167546}.status-badges b.is-warn{color:var(--red2)}.service-status-copy{min-width:0}
+@media(max-width:600px){.faq-list details{padding:16px 18px}.game-suggestion{grid-template-columns:62px 1fr}.game-suggestion img{width:62px}.game-suggestion small{display:none}.status-badges{gap:6px}.status-badges span{font-size:11px}}
