@@ -712,3 +712,42 @@ html { scroll-padding-top: 108px; }
   .modal-description { font-size: 13px; }
   .ticket-preview { font-size: 11px; }
 }
+
+
+/* Ryzor identity, accessible Steam suggestions and compact mobile dock */
+.brand-symbol { width: 31px; height: 31px; display: inline-grid; place-items: center; flex: 0 0 31px; }
+.brand-logo { width: 31px; height: 31px; display: block; overflow: visible; }
+.brand-logo path { fill: none; stroke: #d9d2ff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.brand-logo .brand-accent { stroke: #8e80ff; }
+.field-label { display: block; margin-bottom: 7px; color: #c5cbe0; font-size: 10px; font-weight: 750; }
+.field-label em { margin-left: 4px; color: #75809d; font-size: 9px; font-style: normal; font-weight: 500; }
+.game-autocomplete-field { position: relative; }
+.game-autocomplete-control { position: relative; }
+.game-autocomplete-control input { padding-right: 43px !important; }
+.steam-search-mark { position: absolute; top: 50%; right: 13px; width: 18px; height: 18px; transform: translateY(-50%); pointer-events: none; color: #8d94b2; }
+.steam-search-mark svg, .steam-suggestion-arrow svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.steam-suggestions { position: absolute; z-index: 30; top: calc(100% - 10px); left: 0; right: 0; overflow: hidden; padding: 5px; border: 1px solid rgba(159, 145, 255, .28); border-radius: 13px; background: rgba(11, 15, 30, .985); box-shadow: 0 22px 55px rgba(0, 0, 0, .5); backdrop-filter: blur(18px); }
+.steam-suggestions[hidden] { display: none; }
+.steam-suggestion { width: 100%; display: flex; align-items: center; gap: 11px; padding: 8px; border: 0; border-radius: 9px; background: transparent; color: #edf0ff; text-align: left; cursor: pointer; transition: background .16s ease; }
+.steam-suggestion:hover, .steam-suggestion.is-active { background: rgba(134, 115, 255, .16); }
+.steam-suggestion-art { width: 66px; height: 31px; flex: 0 0 66px; display: grid; place-items: center; overflow: hidden; border-radius: 6px; background: linear-gradient(135deg, #29254e, #142b43); color: #d8d2ff; font-size: 13px; font-weight: 800; }
+.steam-suggestion-art img { width: 100%; height: 100%; object-fit: cover; }
+.steam-suggestion-copy { min-width: 0; display: grid; gap: 3px; flex: 1; }
+.steam-suggestion-copy strong { overflow: hidden; color: #f1f1ff; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.steam-suggestion-copy small { color: #818ba9; font-size: 9px; }
+.steam-suggestion-arrow { width: 15px; height: 15px; color: #9690d9; }
+.steam-suggestion-empty { padding: 14px 12px; color: #a0a8c1; font-size: 11px; line-height: 1.55; }
+.mobile-dock { display: none; }
+@media (max-width: 700px) {
+  body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .mobile-dock { position: fixed; z-index: 70; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); min-height: 62px; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; padding: 5px 7px; border: 1px solid rgba(177, 167, 255, .2); border-radius: 19px; background: rgba(12, 15, 30, .91); box-shadow: 0 12px 38px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .06); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
+  .mobile-dock a { min-width: 0; min-height: 49px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 12px; color: #818ba9; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+  .mobile-dock a:active, .mobile-dock a:focus-visible { color: #ded7ff; background: rgba(139, 119, 255, .14); outline: none; }
+  .mobile-dock svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+  .mobile-dock span { font-size: 9px; font-weight: 700; letter-spacing: .1px; }
+  .site-footer { padding-bottom: 10px; }
+  .steam-suggestions { position: relative; top: auto; margin-top: 7px; }
+}
+@media (prefers-reduced-motion: reduce) { .steam-suggestion, .mobile-dock a { transition: none; } }
+.benefit-icon svg, .status-row-icon svg, .support-info-icon svg, .mini-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.status-row-icon svg { width: 19px; height: 19px; }
