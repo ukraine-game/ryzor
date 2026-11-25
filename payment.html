@@ -3,21 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#080b12">
-  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#080909">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="description" content="Оформлення замовлення Ryzor — вибір тарифу, реквізити та підтвердження оплати.">
-  <title>Оплата — = Ryzor</title>
+  <title>RYZOR — оформлення підписки</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="payment.css">
+  <script src="config.js" defer></script>
   <script src="payment.js" defer></script>
 </head>
 <body class="payment-page">
   <div class="payment-glow payment-glow-a" aria-hidden="true"></div>
   <div class="payment-glow payment-glow-b" aria-hidden="true"></div>
   <header class="payment-header">
-    <a class="payment-brand" href="index.html" aria-label="= Ryzor — на головну">
-      <span class="payment-brand-mark" aria-hidden="true"><svg viewBox="0 0 42 42"><path d="M8 32V10h13c6.2 0 10 3.1 10 8 0 3.7-2 6.3-5.8 7.4L33 32h-8l-6.1-8H15v8z"/><path class="mark-cut" d="M15 15v4h6c1.6 0 2.4-.7 2.4-2s-.8-2-2.4-2z"/><path class="mark-spark" d="M32 6v5m-2.5-2.5h5"/></svg></span>
-      <span><b>= Ryzor</b><small>ХМАРНИЙ ГЕЙМІНГ</small></span>
+    <a class="payment-brand" href="index.html" aria-label="RYZOR — на головну">
+      <span class="payment-brand-mark" aria-hidden="true">R<span>/</span></span>
+      <span><b>RYZOR</b><small>ХМАРНИЙ ГЕЙМІНГ</small></span>
     </a>
     <a class="payment-back" href="index.html#plans"><span aria-hidden="true">←</span> Повернутися до тарифів</a>
   </header>
@@ -90,11 +91,11 @@
         <div class="checkout-card-head"><div><span class="checkout-kicker">КРОК 03 / ПІДТВЕРДЖЕННЯ</span><h2>Надішли підтвердження</h2></div><span class="proof-head-icon"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span></div>
         <p class="proof-description">Після переказу додай скриншот, фото, відео або файл квитанції. Адміністратор побачить його разом із даними замовлення.</p>
         <label class="upload-zone" id="uploadZone" for="paymentProof">
-          <input id="paymentProof" name="attachment" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,.pdf,.zip,.txt" hidden>
+          <input id="paymentProof" name="attachment" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,text/plain,.pdf,.txt" hidden>
           <span class="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span>
           <strong>Натисни, щоб додати файл</strong>
           <span>Або перетягни його сюди</span>
-          <small>Фото, відео, PDF, DOCX, XLSX, ZIP та інші документи · до 20 МБ</small>
+          <small>Фото, відео, PDF і текстові файли · до 20 МБ</small>
         </label>
         <div class="file-preview" id="filePreview" hidden><span class="file-preview-icon" id="filePreviewIcon"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5"/></svg></span><div><strong id="fileName">Файл</strong><small id="fileSize">0 МБ</small></div><button id="removeFile" type="button" aria-label="Видалити файл">×</button></div>
         <label class="checkout-field proof-note"><span>Коментар до платежу <em>необов’язково</em></span><textarea id="paymentComment" maxlength="500" rows="3" placeholder="Наприклад, час переказу або уточнення…"></textarea></label>
@@ -117,6 +118,6 @@
     <p class="payment-legal">Оплата здійснюється вручну за реквізитами, які має надати власник Ryzor. Ця сторінка не зберігає банківські дані та не є платіжним шлюзом. Не здійснюй оплату, якщо реквізити не відображаються або ти не впевнений у отримувачі.</p>
   </main>
   <div class="payment-toast" id="paymentToast" role="status" aria-live="polite"></div>
-  <footer class="payment-footer"><span>© <span id="paymentYear"></span> = Ryzor</span><span>Твої дані потрібні лише для обробки заявки</span></footer>
+  <footer class="payment-footer"><span>© <span id="paymentYear"></span> RYZOR</span><span>Твої дані потрібні лише для обробки заявки</span></footer>
 </body>
 </html>

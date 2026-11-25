@@ -1,481 +1,307 @@
 (() => {
   'use strict';
-
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const config = window.RYZOR_CONFIG || {};
+  const apiBase = String(config.apiBase || '').replace(/\/$/, '');
+  const toast = $('#toast');
+  let toastTimer;
+  let activeGame = null;
+  let launchPoll = null;
+  let launchDeadline = 0;
+  let selectedTicketId = '';
+  let ticketRefresh = null;
 
-  const toastRegion = $('#toastRegion');
-  const ticketModal = $('#ticketModal');
-  const menuToggle = $('#menuToggle');
+  function notify(message) {
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+  }
+
+  async function api(path, options = {}) {
+    if (!apiBase) throw new Error('API Ryzor ще не підключено. Власнику потрібно вказати адресу Worker у config.js.');
+    const response = await fetch(`${apiBase}${path}`, {
+      ...options,
+      mode: 'cors',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+      headers: { Accept: 'application/json', ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok !== true) throw new Error(payload.error || `Помилка запиту (${response.status})`);
+    return payload;
+  }
+
+  // Navigation
+  const navToggle = $('#navToggle');
   const mainNav = $('#mainNav');
-  const gameCards = $$('.game-card');
-  const filterButtons = $$('.filter-button[data-filter]');
-  const searchInput = $('#gameSearch');
-  const noResults = $('#noResults');
-  const gameCount = $('#gameCount');
+  navToggle?.addEventListener('click', () => {
+    const opened = mainNav.classList.toggle('open');
+    navToggle.setAttribute('aria-expanded', String(opened));
+  });
+  $$('#mainNav a').forEach(link => link.addEventListener('click', () => {
+    mainNav.classList.remove('open');
+    navToggle?.setAttribute('aria-expanded', 'false');
+  }));
+
+  // Search and filters
   let activeFilter = 'all';
-  let ticketFileContent = '';
-  let ticketFileName = '';
-
-  function showToast(title, message) {
-    if (!toastRegion) return;
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.setAttribute('role', 'status');
-    const icon = document.createElement('span');
-    icon.className = 'toast-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = '✦';
-    const content = document.createElement('div');
-    const heading = document.createElement('strong');
-    const description = document.createElement('p');
-    heading.textContent = title;
-    description.textContent = message;
-    content.append(heading, description);
-    toast.append(icon, content);
-    toastRegion.append(toast);
-    window.setTimeout(() => {
-      toast.classList.add('toast-out');
-      window.setTimeout(() => toast.remove(), 220);
-    }, 4200);
-  }
-
-  function closeMobileMenu() {
-    if (!menuToggle || !mainNav) return;
-    mainNav.classList.remove('is-open');
-    menuToggle.setAttribute('aria-expanded', 'false');
-    menuToggle.setAttribute('aria-label', 'Відкрити меню');
-  }
-
-  // Mobile navigation
-  if (menuToggle && mainNav) {
-    menuToggle.addEventListener('click', () => {
-      const willOpen = menuToggle.getAttribute('aria-expanded') !== 'true';
-      menuToggle.setAttribute('aria-expanded', String(willOpen));
-      menuToggle.setAttribute('aria-label', willOpen ? 'Закрити меню' : 'Відкрити меню');
-      mainNav.classList.toggle('is-open', willOpen);
-    });
-
-    $$('.nav-link', mainNav).forEach(link => {
-      link.addEventListener('click', closeMobileMenu);
-    });
-
-    document.addEventListener('click', event => {
-      if (mainNav.classList.contains('is-open') && !mainNav.contains(event.target) && !menuToggle.contains(event.target)) {
-        closeMobileMenu();
-      }
-    });
-  }
-
-  // Highlight the sticky header after scrolling
-  const header = $('.site-header');
-  const updateHeader = () => header?.classList.toggle('is-scrolled', window.scrollY > 12);
-  updateHeader();
-  window.addEventListener('scroll', updateHeader, { passive: true });
-
-  // Game filters and search work together
-  function updateCatalog() {
-    const query = (searchInput?.value || '').trim().toLocaleLowerCase('uk-UA');
-    let visibleCount = 0;
-
+  const gameCards = $$('.game-card');
+  const search = $('#gameSearch');
+  const filters = $$('.filter[data-filter]');
+  function filterGames() {
+    const query = (search?.value || '').trim().toLocaleLowerCase('uk-UA');
+    let visible = 0;
     gameCards.forEach(card => {
-      const tags = (card.dataset.tags || '').split(/\s+/);
-      const searchableText = `${card.dataset.search || ''} ${card.textContent || ''}`.toLocaleLowerCase('uk-UA');
-      const filterMatch = activeFilter === 'all' || tags.includes(activeFilter);
-      const searchMatch = !query || searchableText.includes(query);
-      const visible = filterMatch && searchMatch;
-      card.hidden = !visible;
-      if (visible) visibleCount += 1;
+      const matchFilter = activeFilter === 'all' || card.dataset.category === activeFilter;
+      const matchText = !query || (card.dataset.search || '').toLocaleLowerCase('uk-UA').includes(query);
+      card.hidden = !(matchFilter && matchText);
+      if (!card.hidden) visible++;
     });
-
-    if (gameCount) gameCount.textContent = String(visibleCount).padStart(2, '0');
-    if (noResults) noResults.hidden = visibleCount !== 0;
+    $('#emptyGames').hidden = visible > 0;
   }
-
-  filterButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      activeFilter = button.dataset.filter || 'all';
-      filterButtons.forEach(item => {
-        const selected = item === button;
-        item.classList.toggle('is-active', selected);
-        item.setAttribute('aria-pressed', String(selected));
-      });
-      updateCatalog();
+  filters.forEach(button => button.addEventListener('click', () => {
+    activeFilter = button.dataset.filter;
+    filters.forEach(item => {
+      const selected = item === button;
+      item.classList.toggle('is-active', selected);
+      item.setAttribute('aria-pressed', String(selected));
     });
-  });
+    filterGames();
+  }));
+  search?.addEventListener('input', filterGames);
 
-  searchInput?.addEventListener('input', updateCatalog);
-  searchInput?.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && searchInput.value) {
-      searchInput.value = '';
-      updateCatalog();
-    }
-  });
-
-  // Graceful artwork fallback when a Steam CDN image is unavailable
-  $$('.game-art img, .showcase-card img').forEach(image => {
-    image.addEventListener('error', () => {
-      image.closest('.game-art, .showcase-card')?.classList.add('image-failed');
-      image.remove();
-    }, { once: true });
-  });
-
-  // Continue to the dedicated checkout page with the selected plan prefilled.
-  const planSlugs = { Безкоштовний: 'free', Професійний: 'pro', Безлімітний: 'unlimited' };
-  $$('[data-plan]').forEach(button => {
-    button.addEventListener('click', () => {
-      const plan = planSlugs[button.dataset.plan] || 'pro';
-      window.location.href = `payment.html?plan=${encodeURIComponent(plan)}`;
-    });
-  });
-
-  // FAQ accordion
-  $$('.faq-question').forEach(button => {
-    button.addEventListener('click', () => {
-      const item = button.closest('.faq-item');
-      if (!item) return;
-      const willOpen = !item.classList.contains('is-open');
-      item.classList.toggle('is-open', willOpen);
-      button.setAttribute('aria-expanded', String(willOpen));
-      const marker = $('i', button);
-      if (marker) marker.textContent = willOpen ? '−' : '＋';
-    });
-  });
-
-  // Modal helpers
-  function openTicketModal() {
-    if (!ticketModal) return;
-    ticketModal.hidden = false;
-    document.body.classList.add('modal-open');
-    $('[data-close-modal]', ticketModal)?.focus();
-  }
-
-  function closeTicketModal() {
-    if (!ticketModal) return;
-    ticketModal.hidden = true;
+  // Game launch gate: Telegram /start is verified server-side through a one-time deep-link token.
+  const modal = $('#gameModal');
+  const launchButton = $('#startTelegram');
+  const launchHint = $('#launchHint');
+  const launchState = $('#launchState');
+  const botLink = $('.modal-secondary', modal);
+  function closeGameModal() {
+    modal.hidden = true;
     document.body.classList.remove('modal-open');
+    clearInterval(launchPoll);
+    launchPoll = null;
   }
-
-  $$('[data-close-modal]').forEach(button => button.addEventListener('click', closeTicketModal));
-  ticketModal?.addEventListener('click', event => {
-    if (event.target === ticketModal) closeTicketModal();
+  function openGameModal(button) {
+    activeGame = {
+      name: button.dataset.game || 'Гра',
+      image: button.dataset.image || '',
+      description: button.dataset.description || '',
+      kind: button.dataset.kind || 'GAME'
+    };
+    $('#modalGameTitle').textContent = activeGame.name;
+    $('#modalGameDescription').textContent = activeGame.description;
+    $('#modalGameKind').textContent = activeGame.kind;
+    $('#modalGameImage').src = activeGame.image;
+    $('#modalGameImage').alt = activeGame.name;
+    launchState.innerHTML = '<span class="state-marker">01</span><div><strong>ПЕРЕД ЗАПУСКОМ</strong><p>Підтверди, що хочеш продовжити, та натисни Start у Telegram-боті <b>@ryzor_bot</b>. Після цього сайт підтвердить підключення.</p></div>';
+    launchButton.disabled = false;
+    launchButton.innerHTML = 'ПЕРЕЙТИ ДО TELEGRAM <span>↗</span>';
+    launchHint.textContent = apiBase ? 'Після переходу натисни Start у боті. Вікно сайту можна залишити відкритим.' : 'Підключення ще не налаштоване: власник має додати адресу Worker у config.js.';
+    botLink.href = 'https://t.me/ryzor_bot';
+    clearInterval(launchPoll);
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    $('#closeGameModal').focus();
+  }
+  gameCards.forEach(card => {
+    const button = $('.game-open', card);
+    button?.addEventListener('click', () => openGameModal(button));
   });
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') {
-      closeTicketModal();
-      closeMobileMenu();
-    }
-  });
+  $('#closeGameModal')?.addEventListener('click', closeGameModal);
+  modal?.addEventListener('click', event => { if (event.target === modal) closeGameModal(); });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && modal && !modal.hidden) closeGameModal(); });
 
-  // Steam autocomplete: the visitor's typed game title is the only search parameter.
-  // Suggestions are restricted to a small, curated list of non-violent games.
-  const gameInput = $('#ticketGame');
-  const categorySelect = $('#ticketForm select[name="category"]');
-  const suggestionsBox = $('#steamGameSuggestions');
-  const searchHint = $('#steamSearchHint');
-  const gameWrap = $('#gameAutocompleteWrap');
-  const safeSteamAppIds = new Set([227300, 2225070, 493490, 2670630, 3405690, 1247360, 3605330, 413150, 1290000, 1135690, 613100, 1222670]);
-  const steamCache = new Map();
-  let steamTimer = 0;
-  let steamController = null;
-  let steamResults = [];
-  let activeSuggestion = -1;
-
-  function setSteamHint(message) {
-    if (searchHint) searchHint.textContent = message;
-  }
-
-  function closeSteamSuggestions() {
-    if (!suggestionsBox || !gameInput) return;
-    suggestionsBox.hidden = true;
-    suggestionsBox.replaceChildren();
-    gameInput.setAttribute('aria-expanded', 'false');
-    gameInput.removeAttribute('aria-activedescendant');
-    activeSuggestion = -1;
-  }
-
-  function selectSteamGame(game) {
-    gameInput.value = game.name;
-    gameInput.dataset.steamAppid = String(game.id);
-    gameInput.dataset.steamUrl = `https://store.steampowered.com/app/${game.id}/`;
-    closeSteamSuggestions();
-    setSteamHint('Гру вибрано. Її назва та сторінка Steam додадуться до локального файлу звернення.');
-  }
-
-  function renderSteamSuggestions(items) {
-    if (!suggestionsBox || !gameInput) return;
-    steamResults = items;
-    suggestionsBox.replaceChildren();
-    activeSuggestion = -1;
-    if (!items.length) {
-      const empty = document.createElement('div');
-      empty.className = 'steam-suggestion-empty';
-      empty.textContent = 'У перевіреній добірці збігів немає. Можеш ввести назву вручну.';
-      suggestionsBox.append(empty);
-    } else {
-      items.forEach((game, index) => {
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'steam-suggestion';
-        option.id = `steam-option-${index}`;
-        option.setAttribute('role', 'option');
-        option.setAttribute('aria-selected', 'false');
-        const art = document.createElement('span');
-        art.className = 'steam-suggestion-art';
-        if (game.image) {
-          const image = document.createElement('img');
-          image.src = game.image;
-          image.alt = '';
-          image.loading = 'lazy';
-          image.referrerPolicy = 'no-referrer';
-          image.addEventListener('error', () => image.remove(), { once: true });
-          art.append(image);
-        } else {
-          art.textContent = game.name.slice(0, 1).toLocaleUpperCase('uk-UA');
-        }
-        const copy = document.createElement('span');
-        copy.className = 'steam-suggestion-copy';
-        const name = document.createElement('strong');
-        name.textContent = game.name;
-        const source = document.createElement('small');
-        source.textContent = 'Перевірена гра · Steam';
-        copy.append(name, source);
-        const arrow = document.createElement('span');
-        arrow.className = 'steam-suggestion-arrow';
-        arrow.setAttribute('aria-hidden', 'true');
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 24 24');
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M7 17 17 7M8 7h9v9');
-        svg.append(path);
-        arrow.append(svg);
-        option.append(art, copy, arrow);
-        option.addEventListener('click', () => selectSteamGame(game));
-        suggestionsBox.append(option);
-      });
-    }
-    suggestionsBox.hidden = false;
-    gameInput.setAttribute('aria-expanded', 'true');
-  }
-
-  async function searchSteamGames(term) {
-    const query = term.trim();
-    if (!gameInput || !suggestionsBox || query.length < 2) {
-      closeSteamSuggestions();
-      return;
-    }
-    const cacheKey = query.toLocaleLowerCase('uk-UA');
-    if (steamCache.has(cacheKey)) {
-      renderSteamSuggestions(steamCache.get(cacheKey));
-      return;
-    }
-    steamController?.abort();
-    steamController = new AbortController();
-    setSteamHint('Шукаємо збіги в каталозі Steam…');
-    suggestionsBox.replaceChildren();
-    const loading = document.createElement('div');
-    loading.className = 'steam-suggestion-empty';
-    loading.textContent = 'Завантаження…';
-    suggestionsBox.append(loading);
-    suggestionsBox.hidden = false;
-    gameInput.setAttribute('aria-expanded', 'true');
-    const steamUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(query)}&l=ukrainian&cc=UA`;
+  launchButton?.addEventListener('click', async () => {
+    if (!activeGame) return;
+    launchButton.disabled = true;
+    launchButton.textContent = 'СТВОРЮЄМО ЗАПИТ…';
+    launchHint.textContent = 'Готуємо одноразове посилання для перевірки Telegram.';
+    let telegramTab = null;
     try {
-      // The read-only relay is needed because Steam Store does not provide browser CORS headers.
-      // Only the game-name query is sent; ticket fields are never included in this request.
-      const response = await fetch(`https://proxy.cors.dev/${steamUrl}`, {
-        method: 'GET', signal: steamController.signal, credentials: 'omit', cache: 'no-store',
-        referrerPolicy: 'no-referrer', headers: { 'Accept': 'application/json' }
+      // Open a blank tab synchronously during the click so popup blockers do not swallow the Telegram link.
+      telegramTab = window.open('about:blank', '_blank');
+      if (telegramTab) telegramTab.opener = null;
+      const result = await api('/api/launch/create', {
+        method: 'POST',
+        body: JSON.stringify({ game: activeGame.name })
       });
-      if (!response.ok) throw new Error(`Steam search returned ${response.status}`);
-      const payload = await response.json();
-      if (gameInput.value.trim() !== query) return;
-      const items = Array.isArray(payload.items) ? payload.items
-        .filter(item => safeSteamAppIds.has(Number(item.id)))
-        .slice(0, 6)
-        .map(item => {
-          let image = '';
-          try {
-            const url = new URL(item.tiny_image);
-            const trustedHosts = ['cdn.cloudflare.steamstatic.com', 'shared.akamai.steamstatic.com', 'shared.fastly.steamstatic.com', 'cdn.akamai.steamstatic.com'];
-            if (url.protocol === 'https:' && trustedHosts.includes(url.hostname)) image = url.href;
-          } catch (_) { /* No image: render a local letter mark. */ }
-          return { id: Number(item.id), name: String(item.name || '').slice(0, 100), image };
-        }).filter(item => item.id && item.name) : [];
-      steamCache.set(cacheKey, items);
-      renderSteamSuggestions(items);
-      setSteamHint(items.length ? 'Збіги з перевіреної добірки. Обери потрібну гру.' : 'Збігів у перевіреній добірці немає. Назву можна ввести вручну.');
+      const sessionId = result.sessionId;
+      const sessionToken = result.sessionToken;
+      if (!sessionId || !sessionToken || !result.botUrl) throw new Error('Сервер повернув неповні дані запуску.');
+      botLink.href = result.botUrl;
+      if (modal.hidden) {
+        if (telegramTab && !telegramTab.closed) telegramTab.close();
+        return;
+      }
+      if (telegramTab && !telegramTab.closed) {
+        telegramTab.location.replace(result.botUrl);
+      } else {
+        launchHint.textContent = 'Браузер заблокував нову вкладку. Натисни «Відкрити @ryzor_bot окремо», а потім Start.';
+      }
+      launchState.innerHTML = '<span class="state-marker">02</span><div><strong>ОЧІКУЄМО НА /START</strong><p>Відкрий бота та натисни Start. Сайт перевірятиме підтвердження автоматично. Посилання дійсне 5 хвилин.</p></div>';
+      launchButton.textContent = 'ОЧІКУЄМО ПІДТВЕРДЖЕННЯ…';
+      launchDeadline = Date.now() + 5 * 60 * 1000;
+      clearInterval(launchPoll);
+      const check = async () => {
+        if (Date.now() > launchDeadline) {
+          clearInterval(launchPoll);
+          launchButton.disabled = false;
+          launchButton.textContent = 'СПРОБУВАТИ ЩЕ РАЗ';
+          launchHint.textContent = 'Час підтвердження минув. Створи нове посилання та повтори /start.';
+          return;
+        }
+        try {
+          const status = await api('/api/launch/status', { method: 'POST', body: JSON.stringify({ sessionId, sessionToken }) });
+          if (status.verified) {
+            clearInterval(launchPoll);
+            launchState.innerHTML = '<span class="state-marker state-ok">✓</span><div><strong>TELEGRAM ПІДТВЕРДЖЕНО</strong><p>Бот отримав команду /start. Тепер Ryzor може пов’язати цей запит із твоїм Telegram.</p></div>';
+            launchButton.disabled = true;
+            launchButton.textContent = 'ПІДТВЕРДЖЕНО';
+            launchHint.textContent = 'Хмарні ігрові сервери ще готуються. Це підтверджує Telegram, але поки не створює віддалену ігрову сесію.';
+          }
+        } catch (error) {
+          launchHint.textContent = error.message;
+          clearInterval(launchPoll);
+          launchButton.disabled = false;
+          launchButton.textContent = 'СПРОБУВАТИ ЩЕ РАЗ';
+        }
+      };
+      launchPoll = setInterval(check, 2500);
+      await check();
     } catch (error) {
-      if (error.name === 'AbortError') return;
-      closeSteamSuggestions();
-      setSteamHint('Підказки Steam тимчасово недоступні. Перевір інтернет або введи назву вручну.');
+      if (telegramTab && !telegramTab.closed) telegramTab.close();
+      launchButton.disabled = false;
+      launchButton.textContent = 'ПОВТОРИТИ';
+      launchHint.textContent = error.message;
+    }
+  });
+
+  // Support inbox. Only random ticket credentials are stored locally; the Worker stores ticket content in D1.
+  const STORAGE_KEY = 'ryzor.support.v1';
+  function getSavedTickets() {
+    try {
+      const list = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      return Array.isArray(list) ? list.filter(item => /^RZ-[A-Z0-9]{5,10}$/.test(item.id) && typeof item.key === 'string') : [];
+    } catch { return []; }
+  }
+  function saveTickets(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, 10))); }
+  function setSupportStatus(message, error = false) {
+    const node = $('#supportStatus');
+    node.textContent = message;
+    node.classList.toggle('error', error);
+  }
+  function renderTicketList() {
+    const holder = $('#ticketList');
+    const tickets = getSavedTickets();
+    holder.replaceChildren();
+    if (!tickets.length) {
+      const empty = document.createElement('div');
+      empty.className = 'inbox-empty';
+      empty.textContent = 'Поки немає звернень. Створи перше зліва.';
+      holder.append(empty);
+      return;
+    }
+    tickets.forEach(ticket => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `ticket-row${ticket.id === selectedTicketId ? ' selected' : ''}`;
+      const id = document.createElement('b'); id.textContent = ticket.id;
+      const meta = document.createElement('span'); meta.textContent = ticket.category || 'Підтримка';
+      const arrow = document.createElement('i'); arrow.textContent = '↗';
+      button.append(id, meta, arrow);
+      button.addEventListener('click', () => selectTicket(ticket.id));
+      holder.append(button);
+    });
+  }
+  function activeTicket() { return getSavedTickets().find(item => item.id === selectedTicketId); }
+  function appendMessage(message) {
+    const box = $('#chatMessages');
+    const bubble = document.createElement('article');
+    bubble.className = `chat-bubble ${message.actor === 'admin' ? 'from-admin' : 'from-user'}`;
+    const author = document.createElement('small'); author.textContent = message.actor === 'admin' ? 'RYZOR SUPPORT' : 'ТИ';
+    const body = document.createElement('p'); body.textContent = message.body;
+    const time = document.createElement('time');
+    if (message.createdAt) time.textContent = new Date(message.createdAt * 1000).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    bubble.append(author, body, time);
+    box.append(bubble);
+  }
+  async function selectTicket(ticketId) {
+    selectedTicketId = ticketId;
+    renderTicketList();
+    const ticket = activeTicket();
+    if (!ticket) return;
+    $('#ticketChat').hidden = false;
+    $('#activeTicketId').textContent = ticket.id;
+    $('#activeTicketMeta').textContent = `${ticket.category || 'SUPPORT'} / ${ticket.status || 'OPEN'}`.toUpperCase();
+    $('#chatMessages').replaceChildren();
+    try {
+      const data = await api('/api/support/messages', { method: 'POST', body: JSON.stringify({ id: ticket.id, key: ticket.key }) });
+      $('#chatMessages').replaceChildren();
+      data.messages.forEach(appendMessage);
+      $('#activeTicketMeta').textContent = `${data.ticket.status.toUpperCase()} / ${ticket.category || 'SUPPORT'}`;
+      $('#replyForm').hidden = data.ticket.status === 'closed';
+      $('#chatMessages').scrollTop = $('#chatMessages').scrollHeight;
+    } catch (error) {
+      const err = document.createElement('p'); err.className = 'chat-error'; err.textContent = error.message;
+      $('#chatMessages').append(err);
     }
   }
-
-  if (gameInput) {
-    gameInput.addEventListener('input', () => {
-      delete gameInput.dataset.steamAppid;
-      delete gameInput.dataset.steamUrl;
-      if (categorySelect?.value !== 'Замовлення гри') {
-        closeSteamSuggestions();
-        return;
-      }
-      window.clearTimeout(steamTimer);
-      const query = gameInput.value;
-      if (query.trim().length < 2) {
-        closeSteamSuggestions();
-        setSteamHint('Введи щонайменше 2 символи для пошуку.');
-        return;
-      }
-      steamTimer = window.setTimeout(() => searchSteamGames(query), 350);
-    });
-    gameInput.addEventListener('keydown', event => {
-      if (event.key === 'Escape') {
-        closeSteamSuggestions();
-        return;
-      }
-      if (suggestionsBox?.hidden || !steamResults.length) return;
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        const step = event.key === 'ArrowDown' ? 1 : -1;
-        activeSuggestion = (activeSuggestion + step + steamResults.length) % steamResults.length;
-        $$('.steam-suggestion', suggestionsBox).forEach((option, index) => {
-          const active = index === activeSuggestion;
-          option.classList.toggle('is-active', active);
-          option.setAttribute('aria-selected', String(active));
-        });
-        gameInput.setAttribute('aria-activedescendant', `steam-option-${activeSuggestion}`);
-      } else if (event.key === 'Enter' && activeSuggestion >= 0) {
-        event.preventDefault();
-        selectSteamGame(steamResults[activeSuggestion]);
-      }
-    });
-    document.addEventListener('click', event => {
-      if (!gameWrap?.contains(event.target)) closeSteamSuggestions();
-    });
-  }
-
-  categorySelect?.addEventListener('change', () => {
-    const enabled = categorySelect.value === 'Замовлення гри';
-    gameWrap?.classList.toggle('is-search-enabled', enabled);
-    if (!enabled) closeSteamSuggestions();
-    setSteamHint(enabled ? 'Введи 2+ символи. Пошук передає лише назву гри, не дані звернення.' : 'Для підказок обери категорію «Замовлення гри».');
-    if (enabled && gameInput?.value.trim().length >= 2) searchSteamGames(gameInput.value);
-  });
-  if (categorySelect && gameWrap) {
-    const enabled = categorySelect.value === 'Замовлення гри';
-    gameWrap.classList.toggle('is-search-enabled', enabled);
-    setSteamHint(enabled ? 'Введи 2+ символи. Пошук передає лише назву гри, не дані звернення.' : 'Для підказок обери категорію «Замовлення гри».');
-  }
-
-  // Build a local ticket document. No network request, storage, or Telegram message is sent.
-  $('#ticketForm')?.addEventListener('submit', event => {
+  $('#supportForm')?.addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
-
+    const button = $('button[type="submit"]', form);
+    const oldText = button.textContent;
+    button.disabled = true; button.textContent = 'НАДСИЛАЄМО…';
     const data = new FormData(form);
-    const createdAt = new Date();
-    const dateLabel = new Intl.DateTimeFormat('uk-UA', {
-      dateStyle: 'long', timeStyle: 'short'
-    }).format(createdAt);
-    const rawId = `${createdAt.getTime()}`.slice(-8);
-    const ticketId = `RZ-${rawId}`;
-    const nickname = String(data.get('nickname') || '').trim();
-    const email = String(data.get('email') || '').trim() || 'Не вказано';
-    const category = String(data.get('category') || '').trim();
-    const game = String(data.get('game') || '').trim() || 'Не вказано';
-    const steamAppId = gameInput?.dataset.steamAppid || '';
-    const steamGameUrl = steamAppId ? `https://store.steampowered.com/app/${steamAppId}/` : ''; 
-    const message = String(data.get('message') || '').trim();
-
-    const ticket = [
-      '= RYZOR — ЗВЕРНЕННЯ',
-      '====================',
-      `Номер: ${ticketId}`,
-      `Дата: ${dateLabel}`,
-      `Нікнейм: ${nickname}`,
-      `Email: ${email}`,
-      `Категорія: ${category}`,
-      `Гра: ${game}`,
-      ...(steamAppId ? [`Steam App ID: ${steamAppId}`, `Сторінка Steam: ${steamGameUrl}`] : []),
-      '',
-      'ОПИС',
-      '-----',
-      message,
-      '',
-      'Цей файл сформовано локально у браузері. Його не надіслано = Ryzor, у Telegram чи на сервер.'
-    ].join('\n');
-
-    ticketFileContent = ticket;
-    ticketFileName = `Ryzor-звернення-${ticketId}.txt`;
-    $('#ticketIdLabel').textContent = ticketId;
-    $('#ticketPreview').textContent = ticket;
-    openTicketModal();
-  });
-
-  $('#downloadTicket')?.addEventListener('click', () => {
-    if (!ticketFileContent) return;
-    const blob = new Blob([ticketFileContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = ticketFileName || 'Ryzor-звернення.txt';
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast('Файл підготовлено', 'Звернення завантажується на цей пристрій. Воно не надсилається автоматично.');
-  });
-
-  $('#copyTicket')?.addEventListener('click', async () => {
-    if (!ticketFileContent) return;
     try {
-      await navigator.clipboard.writeText(ticketFileContent);
-      showToast('Текст скопійовано', 'Звернення можна вставити у лист або повідомлення.');
+      const result = await api('/api/support/create', {
+        method: 'POST',
+        body: JSON.stringify({ nickname: data.get('nickname'), email: data.get('email'), category: data.get('category'), message: data.get('message') })
+      });
+      const tickets = getSavedTickets();
+      tickets.unshift({ id: result.ticketId, key: result.accessKey, category: String(data.get('category')), status: 'open' });
+      saveTickets(tickets);
+      setSupportStatus(result.adminNotified ? `Звернення ${result.ticketId} створено й надіслано адміністратору. Ключ доступу збережено в цьому браузері. Не передавай його іншим і не очищай дані сайту, поки діалог потрібен.` : `Звернення ${result.ticketId} збережено, але Telegram не підтвердив сповіщення адміністратора. Повідомлення залишилося в системі; власнику потрібно перевірити Telegram Worker.` , !result.adminNotified);
+      form.reset();
+      await selectTicket(result.ticketId);
+      notify(result.adminNotified ? `Звернення ${result.ticketId} надіслано адміністратору.` : `Звернення ${result.ticketId} збережено, але Telegram не сповістив адміністратора.`);
     } catch (error) {
-      const preview = $('#ticketPreview');
-      const range = document.createRange();
-      range.selectNodeContents(preview);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      showToast('Виділено текст звернення', 'Скопіюй виділений текст клавішами Ctrl+C.');
+      setSupportStatus(error.message, true);
+    } finally {
+      button.disabled = false; button.textContent = oldText;
     }
   });
-
-  // Launcher is not distributed yet; never start a download before release.
-  $('#downloadLauncher')?.addEventListener('click', () => {
-    showToast('Лаунчер готується', 'Файл для Windows буде доступний після завершення розробки та перевірки.');
+  $('#replyForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const ticket = activeTicket();
+    const input = $('#replyText');
+    const message = input.value.trim();
+    if (!ticket || !message) return;
+    const button = $('button[type="submit"]', event.currentTarget);
+    button.disabled = true;
+    try {
+      const result = await api('/api/support/message', { method: 'POST', body: JSON.stringify({ ticketId: ticket.id, accessKey: ticket.key, message }) });
+      input.value = '';
+      if (!result.adminNotified) notify('Повідомлення збережено, але Telegram не сповістив адміністратора.');
+      await selectTicket(ticket.id);
+    } catch (error) { notify(error.message); }
+    finally { button.disabled = false; }
   });
+  $('#refreshTickets')?.addEventListener('click', async () => {
+    renderTicketList();
+    if (selectedTicketId) await selectTicket(selectedTicketId);
+    else notify('Список звернень оновлено.');
+  });
+  $('#closeTicketChat')?.addEventListener('click', () => { $('#ticketChat').hidden = true; selectedTicketId = ''; renderTicketList(); });
+  renderTicketList();
+  const initialTickets = getSavedTickets();
+  if (initialTickets.length) selectTicket(initialTickets[0].id);
+  ticketRefresh = setInterval(() => { if (!document.hidden && selectedTicketId) selectTicket(selectedTicketId); }, 15000);
 
-  // Scroll reveal is progressive enhancement: the stylesheet keeps content visible by default.
-  const revealElements = $$('.reveal');
-  if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const revealObserver = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add('is-visible');
-        revealObserver.unobserve(entry.target);
-      });
-    }, { threshold: 0.08, rootMargin: '0px 0px -35px 0px' });
-    revealElements.forEach(element => revealObserver.observe(element));
-
-    const sections = ['home', 'games', 'plans', 'status', 'support'].map(id => document.getElementById(id)).filter(Boolean);
-    const navObserver = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        $$('.nav-link').forEach(link => {
-          link.classList.toggle('is-active', link.getAttribute('href') === `#${entry.target.id}`);
-        });
-      });
-    }, { rootMargin: '-32% 0px -58% 0px' });
-    sections.forEach(section => navObserver.observe(section));
-  } else {
-    revealElements.forEach(element => element.classList.add('is-visible'));
-  }
-
-  const year = $('#currentYear');
-  if (year) year.textContent = String(new Date().getFullYear());
-  updateCatalog();
+  $('#year').textContent = String(new Date().getFullYear());
 })();
