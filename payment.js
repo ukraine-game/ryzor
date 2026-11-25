@@ -39,14 +39,18 @@
     node.hidden = false;
   };
   async function api(path, body) {
-    if (!apiBase) throw new Error('API Ryzor ще не підключено.');
+    if (!apiBase) throw new Error('Оформлення тимчасово недоступне. Спробуй пізніше.');
     const response = await fetch(`${apiBase}${path}`, {
       method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
       body: JSON.stringify(body || {})
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok !== true) throw new Error(data.error || `Помилка запиту (${response.status})`);
+    if (!response.ok || data.ok !== true) {
+      const detail = String(data.error || '');
+      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
+      throw new Error(internal ? 'Оформлення тимчасово недоступне. Спробуй пізніше.' : (detail || `Помилка запиту (${response.status})`));
+    }
     return data;
   }
   async function apiForm(path, data) {
@@ -55,7 +59,11 @@
       headers: { Accept: 'application/json', Authorization: `Bearer ${sessionToken}` }, body: data
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.ok !== true) throw new Error(result.error || `Помилка надсилання (${response.status})`);
+    if (!response.ok || result.ok !== true) {
+      const detail = String(result.error || '');
+      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
+      throw new Error(internal ? 'Не вдалося надіслати підтвердження. Спробуй пізніше.' : (detail || `Помилка надсилання (${response.status})`));
+    }
     return result;
   }
   function updateSummary() {
@@ -72,8 +80,8 @@
   }
   function updateRequisites() {
     $('#bankCardNumber').textContent = cardNumber || '•••• •••• •••• ••••';
-    $('#bankRecipient').textContent = paymentConfig.recipient || 'Реквізити ще не додані';
-    $('#bankName').textContent = paymentConfig.bank || 'Банк не вказано';
+    $('#bankRecipient').textContent = paymentConfig.recipient || 'Буде вказано перед відкриттям оплати';
+    $('#bankName').textContent = paymentConfig.bank || 'Буде вказано перед відкриттям оплати';
     $('#copyCardValue').textContent = cardNumber || 'Не налаштовано';
     $('#copyRecipientValue').textContent = paymentConfig.recipient || 'Не налаштовано';
     $('#copyIbanValue').textContent = paymentConfig.iban || '';
@@ -81,8 +89,8 @@
     const warning = $('#paymentSetupWarning');
     warning.hidden = isPaymentConfigured();
     const span = warning.querySelector('span');
-    if (!paymentsEnabled) span.textContent = 'Приймання оплат вимкнено до запуску хмарних серверів і перевірки платіжних реквізитів. Не переказуй кошти.';
-    else if (!cardNumber || !paymentConfig.recipient || !paymentConfig.bank) span.textContent = 'Реквізити ще не додані власником Ryzor. Не переказуй кошти.';
+    if (!paymentsEnabled) span.textContent = 'Оплата тимчасово недоступна. Не здійснюй переказ, доки оформлення не буде офіційно відкрито.';
+    else if (!cardNumber || !paymentConfig.recipient || !paymentConfig.bank) span.textContent = 'Оплата тимчасово недоступна. Не здійснюй переказ.';
     else if (!apiBase || !sessionToken) span.textContent = 'Не вдалося підключити API або акаунт. Увійди ще раз і перевір налаштування.';
   }
   function step(number) {
@@ -217,7 +225,7 @@
   document.querySelectorAll('[data-copy-target]').forEach(button => button.addEventListener('click', async () => {
     const target = button.dataset.copyTarget;
     const value = target === 'card' ? cardNumber : target === 'recipient' ? paymentConfig.recipient : paymentConfig.iban;
-    if (!value) return notify('Реквізити ще не налаштовано.');
+    if (!value) return notify('Ці дані поки недоступні.');
     try { await navigator.clipboard.writeText(value); notify('Скопійовано.'); } catch { notify('Не вдалося скопіювати автоматично.'); }
   }));
 

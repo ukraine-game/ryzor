@@ -21,7 +21,7 @@
     node.textContent = '';
   }
   async function api(path, body, token = '') {
-    if (!apiBase) throw new Error('API ще не підключено. Власнику потрібно вказати адресу Cloudflare Worker у config.js.');
+    if (!apiBase) throw new Error('Сервіс тимчасово недоступний. Спробуй трохи пізніше.');
     const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${apiBase}${path}`, {
@@ -29,7 +29,11 @@
       headers, body: JSON.stringify(body || {})
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok !== true) throw new Error(data.error || `Помилка запиту (${response.status})`);
+    if (!response.ok || data.ok !== true) {
+      const detail = String(data.error || '');
+      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
+      throw new Error(internal ? 'Сервіс входу тимчасово недоступний. Спробуй пізніше.' : (detail || `Помилка запиту (${response.status})`));
+    }
     return data;
   }
   const PASSWORD_ITERATIONS = 600000;
@@ -124,13 +128,13 @@
     const token = sessionStorage.getItem(SESSION_KEY) || '';
     if (!token || !apiBase) return;
     try { renderAccountOverview(await api('/api/account/overview', {}, token)); }
-    catch (error) { $('#accountPlanMeta').textContent = error.message; }
+    catch { $('#accountPlanMeta').textContent = 'Не вдалося оновити дані акаунта. Спробуй пізніше.'; }
   }
 
   function renderGoogleButton() {
     if (googleInitialized) return true;
     if (!googleClientId) {
-      $('#googleButton').textContent = 'Власнику сайту потрібно додати googleClientId у config.js.';
+      $('#googleButton').textContent = 'Вхід через Google тимчасово недоступний.';
       return false;
     }
     if (!window.google?.accounts?.id) return false;
@@ -293,5 +297,5 @@
     }
   }
   restoreSession();
-  if (!apiBase) status('Підключення до сервера акаунтів ще не налаштоване. Після розгортання Cloudflare Worker реєстрація та вхід запрацюють.', true);
+  if (!apiBase) status('Вхід тимчасово недоступний. Спробуй пізніше.', true);
 })();

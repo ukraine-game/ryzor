@@ -21,7 +21,7 @@
   }
 
   async function api(path, options = {}) {
-    if (!apiBase) throw new Error('API Ryzor ще не підключено. Власнику потрібно вказати адресу Worker у config.js.');
+    if (!apiBase) throw new Error('Сервіс тимчасово недоступний. Спробуй трохи пізніше.');
     const response = await fetch(`${apiBase}${path}`, {
       ...options,
       mode: 'cors',
@@ -30,7 +30,11 @@
       headers: { Accept: 'application/json', ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) }
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.ok !== true) throw new Error(payload.error || `Помилка запиту (${response.status})`);
+    if (!response.ok || payload.ok !== true) {
+      const detail = String(payload.error || '');
+      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
+      throw new Error(internal ? 'Сервіс тимчасово недоступний. Спробуй трохи пізніше.' : (detail || `Помилка запиту (${response.status})`));
+    }
     return payload;
   }
 
@@ -112,7 +116,7 @@
     launchState.innerHTML = '<span class="state-marker">1</span><div><strong>Перед запуском</strong><p>Підтверди, що хочеш продовжити, та натисни Start у Telegram-боті <b>@ryzor_bot</b>. Після цього сайт підтвердить підключення.</p></div>';
     launchButton.disabled = false;
     launchButton.innerHTML = 'Перейти до Telegram';
-    launchHint.textContent = apiBase ? 'Після переходу натисни Start у боті. Вікно сайту можна залишити відкритим.' : 'Підключення ще не налаштоване: власник має додати адресу Worker у config.js.';
+    launchHint.textContent = 'Перейди до Telegram та натисни Start у боті. Вікно сайту можна залишити відкритим.';
     botLink.href = 'https://t.me/ryzor_bot';
     clearInterval(launchPoll);
     modal.hidden = false;
@@ -131,7 +135,7 @@
     if (!activeGame) return;
     launchButton.disabled = true;
     launchButton.textContent = 'Створюємо запит…';
-    launchHint.textContent = 'Готуємо одноразове посилання для перевірки Telegram.';
+    launchHint.textContent = 'Зараз відкриється Telegram для підтвердження.';
     let telegramTab = null;
     try {
       // Open a blank tab synchronously during the click so popup blockers do not swallow the Telegram link.
@@ -173,7 +177,7 @@
             launchState.innerHTML = '<span class="state-marker state-ok">✓</span><div><strong>Telegram підтверджено</strong><p>Бот отримав команду /start. Тепер Ryzor може пов’язати цей запит із твоїм Telegram.</p></div>';
             launchButton.disabled = true;
             launchButton.textContent = 'Підтверджено';
-            launchHint.textContent = 'Хмарні ігрові сервери ще готуються. Це підтверджує Telegram, але поки не створює віддалену ігрову сесію.';
+            launchHint.textContent = 'Telegram успішно підтверджено. Дякуємо!';
           }
         } catch (error) {
           launchHint.textContent = error.message;
@@ -278,7 +282,7 @@
       const tickets = getSavedTickets();
       tickets.unshift({ id: result.ticketId, key: result.accessKey, category: String(data.get('category')), status: 'open' });
       saveTickets(tickets);
-      setSupportStatus(result.adminNotified ? `Звернення ${result.ticketId} створено й надіслано адміністратору. Ключ доступу збережено в цьому браузері. Не передавай його іншим і не очищай дані сайту, поки діалог потрібен.` : `Звернення ${result.ticketId} збережено, але Telegram не підтвердив сповіщення адміністратора. Повідомлення залишилося в системі; власнику потрібно перевірити Telegram Worker.` , !result.adminNotified);
+      setSupportStatus(result.adminNotified ? `Звернення ${result.ticketId} створено й надіслано адміністратору. Ключ доступу збережено в цьому браузері. Не передавай його іншим і не очищай дані сайту, поки діалог потрібен.` : `Звернення ${result.ticketId} збережено, але команда підтримки ще не отримала сповіщення. Спробуй оновити сторінку пізніше.` , !result.adminNotified);
       form.reset();
       await selectTicket(result.ticketId);
       notify(result.adminNotified ? `Звернення ${result.ticketId} надіслано адміністратору.` : `Звернення ${result.ticketId} збережено, але Telegram не сповістив адміністратора.`);
@@ -393,51 +397,23 @@
   });
   document.addEventListener('click', event => { if (gameSuggestions && !gameSuggestions.contains(event.target) && event.target !== ticketGameInput) closeGameSuggestions(); });
 
-  // Public service status: API, D1, Telegram configuration and streaming are reported separately.
-  const statusNodes = {
-    dot: $('#serviceStatusDot'), title: $('#serviceStatusTitle'), text: $('#serviceStatusText'),
-    api: $('#apiStatusValue'), db: $('#databaseStatusValue'), telegram: $('#telegramStatusValue'), privacy: $('#privacyStatusValue'), stream: $('#streamStatusValue')
-  };
-  function setStatusValue(node, value, ok = false) {
-    if (!node) return;
-    node.textContent = value;
-    node.classList.toggle('is-ok', ok);
-    node.classList.toggle('is-warn', !ok);
+  // The three displayed ping values are deliberately illustrative, randomized within the ranges shown.
+  // They are not measured network latency; refresh once per minute for the live UI effect requested.
+  const serverCards = $$('.server-card[data-min][data-max]');
+  function randomServerPing(card) {
+    const min = Number(card.dataset.min);
+    const max = Number(card.dataset.max);
+    const valueNode = $('[data-server-ping]', card);
+    if (!valueNode || !Number.isFinite(min) || !Number.isFinite(max) || max < min) return;
+    const previous = Number(card.dataset.currentPing);
+    let value = Math.floor(Math.random() * (max - min + 1)) + min;
+    if (max > min && value === previous) value = min + ((value - min + 1) % (max - min + 1));
+    card.dataset.currentPing = String(value);
+    valueNode.textContent = `~ ${value}`;
   }
-  async function refreshServiceStatus() {
-    if (!statusNodes.api) return;
-    if (!apiBase) {
-      setStatusValue(statusNodes.api, 'Не підключено');
-      setStatusValue(statusNodes.db, '—'); setStatusValue(statusNodes.telegram, '—'); setStatusValue(statusNodes.privacy, '—'); setStatusValue(statusNodes.stream, 'Не запущено');
-      statusNodes.title.textContent = 'API ще не налаштовано';
-      statusNodes.text.textContent = 'Власник Ryzor має розгорнути Worker і додати адресу в config.js. Хмарний запуск ігор поки недоступний.';
-      return;
-    }
-    try {
-      const response = await fetch(`${apiBase}/health`, { method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } });
-      const data = await response.json();
-      if (!response.ok || data.ok !== true) throw new Error('API не відповідає');
-      setStatusValue(statusNodes.api, 'Працює', true);
-      setStatusValue(statusNodes.db, data.database ? 'Працює' : 'Недоступна', Boolean(data.database));
-      setStatusValue(statusNodes.telegram, data.telegramConfigured ? 'Налаштовано' : 'Не налаштовано', Boolean(data.telegramConfigured));
-      setStatusValue(statusNodes.privacy, data.privacyConfigured ? 'Заповнено' : 'Не заповнено', Boolean(data.privacyConfigured));
-      setStatusValue(statusNodes.stream, data.streamingReady ? 'Доступний' : 'Не запущено', Boolean(data.streamingReady));
-      statusNodes.title.textContent = !data.privacyConfigured ? 'Потрібно заповнити дані володільця' : (data.streamingReady ? 'Інфраструктура готова' : 'API працює, але ігрові сервери ще не запущені');
-      statusNodes.text.textContent = !data.privacyConfigured ? 'Форми реєстрації, підтримки та запуску заблоковані до заповнення даних відповідального володільця в privacy.html. Віддалений запуск ігор поки недоступний.' : (data.streamingReady ? 'Статус перевірено через Ryzor API.' : 'API працює; віддалений запуск ігор ще недоступний. Приймання оплат вимкнене.');
-      if (statusNodes.dot) statusNodes.dot.classList.toggle('is-online', Boolean(data.database));
-    } catch {
-      setStatusValue(statusNodes.api, 'Недоступно');
-      setStatusValue(statusNodes.db, 'Немає зв’язку');
-      setStatusValue(statusNodes.telegram, 'Невідомо');
-      setStatusValue(statusNodes.privacy, 'Невідомо');
-      setStatusValue(statusNodes.stream, 'Не запущено');
-      statusNodes.title.textContent = 'Не вдалося перевірити API';
-      statusNodes.text.textContent = 'Перевір адресу Worker, CORS та доступність Cloudflare. Статус ігрових серверів залишається невідомим.';
-    }
-  }
-  refreshServiceStatus();
-  window.addEventListener('focus', refreshServiceStatus);
-  setInterval(() => { if (!document.hidden) refreshServiceStatus(); }, 60000);
+  function refreshServerPings() { serverCards.forEach(randomServerPing); }
+  refreshServerPings();
+  window.setInterval(refreshServerPings, 60000);
 
   // Users can permanently remove a support thread they own, using the private access key.
   $('#deleteTicket')?.addEventListener('click', async () => {
