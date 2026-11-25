@@ -120,24 +120,12 @@
     }, { once: true });
   });
 
-  // Planned prices are informative only. Route users to the pricing FAQ instead of pretending to subscribe.
+  // Continue to the dedicated checkout page with the selected plan prefilled.
+  const planSlugs = { Безкоштовний: 'free', Професійний: 'pro', Безлімітний: 'unlimited' };
   $$('[data-plan]').forEach(button => {
     button.addEventListener('click', () => {
-      const pricingFaq = $$('.faq-item').find(item => /ціни тарифів/i.test(item.textContent));
-      if (pricingFaq) {
-        $$('.faq-item').forEach(item => {
-          const open = item === pricingFaq;
-          item.classList.toggle('is-open', open);
-          const question = $('.faq-question', item);
-          if (question) question.setAttribute('aria-expanded', String(open));
-          const marker = $('i', question);
-          if (marker) marker.textContent = open ? '−' : '＋';
-        });
-        pricingFaq.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else {
-        $('#faq')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      showToast('Планові умови', 'Підписки ще не відкриті. Остаточні ціни та характеристики буде опубліковано до запуску.');
+      const plan = planSlugs[button.dataset.plan] || 'pro';
+      window.location.href = `payment.html?plan=${encodeURIComponent(plan)}`;
     });
   });
 

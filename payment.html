@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b12">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Оформлення замовлення Ryzor — вибір тарифу, реквізити та підтвердження оплати.">
+  <title>Оплата — = Ryzor</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="payment.css">
+  <script src="payment.js" defer></script>
+</head>
+<body class="payment-page">
+  <div class="payment-glow payment-glow-a" aria-hidden="true"></div>
+  <div class="payment-glow payment-glow-b" aria-hidden="true"></div>
+  <header class="payment-header">
+    <a class="payment-brand" href="index.html" aria-label="= Ryzor — на головну">
+      <span class="payment-brand-mark" aria-hidden="true"><svg viewBox="0 0 42 42"><path d="M8 32V10h13c6.2 0 10 3.1 10 8 0 3.7-2 6.3-5.8 7.4L33 32h-8l-6.1-8H15v8z"/><path class="mark-cut" d="M15 15v4h6c1.6 0 2.4-.7 2.4-2s-.8-2-2.4-2z"/><path class="mark-spark" d="M32 6v5m-2.5-2.5h5"/></svg></span>
+      <span><b>= Ryzor</b><small>ХМАРНИЙ ГЕЙМІНГ</small></span>
+    </a>
+    <a class="payment-back" href="index.html#plans"><span aria-hidden="true">←</span> Повернутися до тарифів</a>
+  </header>
+
+  <main class="payment-main">
+    <div class="payment-heading">
+      <span class="payment-eyebrow"><i></i> БЕЗПЕЧНЕ ОФОРМЛЕННЯ ЗАМОВЛЕННЯ</span>
+      <h1>Оформлення <span>підписки.</span></h1>
+      <p>Заповни дані, перевір тариф і надішли підтвердження переказу адміністратору.</p>
+    </div>
+
+    <div class="payment-steps" aria-label="Етапи оформлення">
+      <div class="payment-step is-active" data-step-indicator="1"><span>01</span><b>Дані</b></div><i></i>
+      <div class="payment-step" data-step-indicator="2"><span>02</span><b>Оплата</b></div><i></i>
+      <div class="payment-step" data-step-indicator="3"><span>03</span><b>Перевірка</b></div>
+    </div>
+
+    <section class="checkout-layout" id="checkoutStepOne">
+      <form class="checkout-card" id="checkoutForm" novalidate>
+        <div class="checkout-card-head"><div><span class="checkout-kicker">КРОК 01 / ДАНІ ЗАМОВЛЕННЯ</span><h2>Твої дані</h2></div><span class="checkout-head-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.3"/><path d="M5 20c.6-3.1 3.2-5.1 7-5.1s6.4 2 7 5.1"/></svg></span></div>
+        <div class="checkout-fields">
+          <label class="checkout-field"><span>Нікнейм у Ryzor</span><input name="nickname" type="text" minlength="2" maxlength="24" placeholder="Наприклад, Player_ua" autocomplete="nickname" required><small>Від 2 до 24 символів</small></label>
+          <label class="checkout-field"><span>Електронна пошта</span><input name="email" type="email" maxlength="100" placeholder="name@example.com" autocomplete="email" required><small>На цю адресу можна буде надіслати результат перевірки</small></label>
+          <label class="checkout-field"><span>Telegram для зв’язку <em>необов’язково</em></span><input name="telegram" type="text" maxlength="40" placeholder="@username" autocomplete="off"><small>Не надсилай пароль або код входу</small></label>
+          <label class="checkout-field"><span>Тариф</span><select name="plan" id="checkoutPlan" required><option value="free">Безкоштовний — 0 ₴</option><option value="pro" selected>Професійний — 199 ₴ / місяць</option><option value="unlimited">Безлімітний — 399 ₴ / місяць</option></select></label>
+        </div>
+        <div class="checkout-consent"><span class="consent-check"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><p>Перед оплатою звір тариф і суму. Не вводь тут дані банківської картки, PIN або CVV.</p></div>
+        <button class="checkout-primary" id="checkoutContinue" type="submit">До оплати <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+        <div class="payment-submit-status is-error" id="checkoutStepStatus" role="status" aria-live="polite" hidden></div>
+        <p class="checkout-footnote">Наразі це ручне оформлення заявки, а не автоматична платіжна система. Доступ до сервісу ще готується; не переказуй кошти, доки на сторінці не з’являться перевірені реквізити та офіційний старт продажів.</p>
+      </form>
+
+      <aside class="order-summary">
+        <span class="summary-kicker">ТВОЄ ЗАМОВЛЕННЯ</span>
+        <div class="summary-plan-icon"><svg viewBox="0 0 24 24"><path d="m12 2 2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></div>
+        <h3 id="summaryPlanName">Професійний</h3>
+        <p id="summaryPlanDescription">Для регулярних ігрових сесій із пріоритетом.</p>
+        <div class="summary-price"><strong id="summaryPlanPrice">199 ₴</strong><span id="summaryPlanPeriod">/ 30 днів</span></div>
+        <div class="summary-divider"></div>
+        <div class="summary-line"><span>Тариф</span><b id="summaryPlanShort">Професійний</b></div>
+        <div class="summary-line"><span>Тривалість</span><b id="summaryPlanDuration">30 днів</b></div>
+        <div class="summary-line summary-total"><span>До сплати</span><b id="summaryTotal">199 ₴</b></div>
+        <div class="summary-secure"><svg viewBox="0 0 24 24"><path d="M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5z"/><path d="M12 14v3"/></svg><span>Передача заявки буде захищена з’єднанням HTTPS</span></div>
+      </aside>
+    </section>
+
+    <section class="payment-details-layout" id="checkoutStepTwo" hidden>
+      <div class="payment-details-main">
+        <div class="checkout-card payment-instructions-card">
+          <div class="checkout-card-head"><div><span class="checkout-kicker">КРОК 02 / РЕКВІЗИТИ</span><h2>Оплата замовлення</h2></div><span class="payment-method-tag"><i></i> ПЕРЕКАЗ</span></div>
+          <p class="payment-order-caption">Замовлення <b id="paymentOrderId">RZ-000000</b> · <b id="paymentOrderPlan">Професійний</b></p>
+          <div class="bank-card" aria-label="Картка для оплати — реквізити налаштовуються власником сайту">
+            <div class="bank-card-top"><span class="bank-card-brand">RYZOR<span>PAY</span></span><svg viewBox="0 0 44 34" aria-hidden="true"><rect x="1" y="1" width="42" height="32" rx="7"/><path d="M15 1v32M29 1v32M1 12h42M1 22h42"/></svg></div>
+            <div class="bank-chip" aria-hidden="true"><span></span><i></i></div>
+            <div class="bank-card-number" id="bankCardNumber">•••• •••• •••• ••••</div>
+            <div class="bank-card-bottom"><div><small>ОТРИМУВАЧ</small><strong id="bankRecipient">Реквізити ще не додані</strong></div><div><small>БАНК</small><strong id="bankName">Банк буде вказано</strong></div></div>
+            <div class="bank-card-orbit" aria-hidden="true"></div>
+          </div>
+          <div class="requisites-list">
+            <div class="requisite-row"><div><small>Номер картки</small><strong id="copyCardValue">Не налаштовано</strong></div><button type="button" class="copy-requisite" data-copy-target="card" aria-label="Скопіювати номер картки"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button></div>
+            <div class="requisite-row"><div><small>Отримувач</small><strong id="copyRecipientValue">Не налаштовано</strong></div><button type="button" class="copy-requisite" data-copy-target="recipient" aria-label="Скопіювати отримувача"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button></div>
+            <div class="requisite-row" id="ibanRow" hidden><div><small>IBAN</small><strong id="copyIbanValue"></strong></div><button type="button" class="copy-requisite" data-copy-target="iban" aria-label="Скопіювати IBAN"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button></div>
+          </div>
+          <div class="payment-setup-warning" id="paymentSetupWarning"><svg viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5m0 3h.01"/></svg><span>Власник сайту ще не додав платіжні реквізити. Не здійснюй переказ. Реквізити з’являться після налаштування <b>PAYMENT_CONFIG</b> у файлі payment.js.</span></div>
+          <div class="payment-timer-row"><div><span class="timer-label">ЧАС ДЛЯ ОПЛАТИ</span><p>Після завершення таймера заявку потрібно створити повторно.</p></div><div class="payment-timer" id="paymentTimer" role="timer" aria-live="off">10:00</div></div>
+        </div>
+      </div>
+
+      <div class="checkout-card proof-card">
+        <div class="checkout-card-head"><div><span class="checkout-kicker">КРОК 03 / ПІДТВЕРДЖЕННЯ</span><h2>Надішли підтвердження</h2></div><span class="proof-head-icon"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span></div>
+        <p class="proof-description">Після переказу додай скриншот, фото, відео або файл квитанції. Адміністратор побачить його разом із даними замовлення.</p>
+        <label class="upload-zone" id="uploadZone" for="paymentProof">
+          <input id="paymentProof" name="attachment" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,.pdf,.zip,.txt" hidden>
+          <span class="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span>
+          <strong>Натисни, щоб додати файл</strong>
+          <span>Або перетягни його сюди</span>
+          <small>Фото, відео, PDF, DOCX, XLSX, ZIP та інші документи · до 20 МБ</small>
+        </label>
+        <div class="file-preview" id="filePreview" hidden><span class="file-preview-icon" id="filePreviewIcon"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5"/></svg></span><div><strong id="fileName">Файл</strong><small id="fileSize">0 МБ</small></div><button id="removeFile" type="button" aria-label="Видалити файл">×</button></div>
+        <label class="checkout-field proof-note"><span>Коментар до платежу <em>необов’язково</em></span><textarea id="paymentComment" maxlength="500" rows="3" placeholder="Наприклад, час переказу або уточнення…"></textarea></label>
+        <label class="checkout-consent proof-consent"><input id="proofConsent" type="checkbox" required><span>Підтверджую, що переказ здійснено, а файл не містить паролів, CVV чи повного номера картки.</span></label>
+        <button class="checkout-primary" id="sendPaymentProof" type="button" disabled>Надіслати підтвердження <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+        <div class="payment-submit-status" id="paymentSubmitStatus" role="status" aria-live="polite" hidden></div>
+        <p class="checkout-footnote">Файл передається адміністратору лише після натискання кнопки. Не додавай документи, що не стосуються підтвердження переказу.</p>
+      </div>
+    </section>
+
+    <section class="payment-success" id="paymentSuccess" hidden>
+      <div class="success-mark"><svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></svg></div>
+      <span class="checkout-kicker">ЗАЯВКУ ОТРИМАНО</span>
+      <h2>Дякуємо за оплату!</h2>
+      <p>Підтвердження надіслано адміністратору Ryzor. Після перевірки оплати з тобою зв’яжуться за вказаною поштою або Telegram. Підписка активується після підтвердження адміністратором і готовності сервісу.</p>
+      <div class="success-order"><span>Номер заявки</span><b id="successOrderId">RZ-000000</b></div>
+      <a class="checkout-primary success-home" href="index.html">На головну <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+    </section>
+
+    <p class="payment-legal">Оплата здійснюється вручну за реквізитами, які має надати власник Ryzor. Ця сторінка не зберігає банківські дані та не є платіжним шлюзом. Не здійснюй оплату, якщо реквізити не відображаються або ти не впевнений у отримувачі.</p>
+  </main>
+  <div class="payment-toast" id="paymentToast" role="status" aria-live="polite"></div>
+  <footer class="payment-footer"><span>© <span id="paymentYear"></span> = Ryzor</span><span>Твої дані потрібні лише для обробки заявки</span></footer>
+</body>
+</html>

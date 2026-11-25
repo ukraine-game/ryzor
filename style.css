@@ -751,3 +751,66 @@ html { scroll-padding-top: 108px; }
 @media (prefers-reduced-motion: reduce) { .steam-suggestion, .mobile-dock a { transition: none; } }
 .benefit-icon svg, .status-row-icon svg, .support-info-icon svg, .mini-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
 .status-row-icon svg { width: 19px; height: 19px; }
+
+/* = Ryzor visual refresh — sharper surfaces, calmer contrast and a mint/violet identity. */
+:root {
+  --bg: #080b12;
+  --bg-soft: #0d121d;
+  --panel: #111925;
+  --panel-2: #172235;
+  --line: rgba(194, 213, 237, .12);
+  --line-strong: rgba(194, 213, 237, .22);
+  --text: #f4f7ff;
+  --muted: #9ba8bb;
+  --muted-2: #718097;
+  --violet: #a18dff;
+  --purple: #806dff;
+  --blue: #82a8ff;
+  --cyan: #5cebd2;
+  --green: #68ebc6;
+  --pink: #d59dff;
+  --radius: 24px;
+  --shadow: 0 28px 88px rgba(0, 0, 0, .4);
+}
+body { background: radial-gradient(ellipse at 50% -10%, rgba(96, 83, 190, .13), transparent 42%), #080b12; }
+.ambient-one { background: #6654e8; opacity: .15; }
+.ambient-two { background: #18a996; opacity: .10; }
+.site-header { background: rgba(8, 11, 18, .82); border-color: rgba(196, 218, 240, .09); }
+.site-header.is-scrolled { background: rgba(8, 11, 18, .96); }
+.brand { letter-spacing: -.9px; }
+.brand-dot { color: var(--cyan); }
+.brand-symbol { width: 38px; height: 38px; transform: none; border: 1px solid rgba(92, 235, 210, .22); border-radius: 12px; background: linear-gradient(145deg, rgba(92, 235, 210, .15), rgba(161, 141, 255, .15)); box-shadow: 0 7px 24px rgba(48, 207, 188, .12); }
+.brand-logo { width: 34px; height: 34px; fill: #edfffb; }
+.brand-logo .brand-accent { fill: #203039; }
+.brand-logo .brand-spark { fill: none; stroke: var(--cyan); stroke-width: 2.5; stroke-linecap: round; }
+.nav-link.is-active::after { background: linear-gradient(90deg, var(--cyan), var(--violet)); }
+.button-primary { background: linear-gradient(105deg, #6debd4, #8e9fff); color: #071117; box-shadow: 0 12px 35px rgba(77, 218, 197, .17); }
+.button-primary:hover { filter: brightness(1.06); box-shadow: 0 16px 42px rgba(77, 218, 197, .23); }
+.button-ghost { border-color: rgba(194, 213, 237, .19); background: rgba(255, 255, 255, .035); }
+.gradient-text { background-image: linear-gradient(105deg, #d9fff7 0%, #a9a0ff 54%, #6fe7d7 100%); }
+.hero h1 { letter-spacing: -.065em; }
+.hero-showcase, .showcase-card { border-color: rgba(190, 215, 235, .18); }
+.benefits-section { background: rgba(255,255,255,.018); border-color: rgba(194,213,237,.08); }
+.benefit-card, .plan-card, .ticket-card, .status-panel, .launcher-panel, .faq-item { border-color: rgba(194, 213, 237, .12); }
+.plan-card, .ticket-card { background: linear-gradient(155deg, rgba(20, 29, 43, .96), rgba(12, 17, 27, .96)); box-shadow: 0 22px 70px rgba(0,0,0,.22); }
+.plan-card:hover, .game-card:hover { border-color: rgba(92, 235, 210, .36); box-shadow: 0 24px 68px rgba(0,0,0,.32), 0 0 0 1px rgba(92,235,210,.06); }
+.plan-featured { border-color: rgba(92, 235, 210, .34); box-shadow: 0 24px 75px rgba(37, 184, 164, .09); }
+.plan-ribbon { background: linear-gradient(100deg, #6debd4, #a69aff); color: #071117; }
+.plan-pro, .plan-unlimited { color: var(--cyan); }
+.pricing-notice { border-color: rgba(92,235,210,.16); background: rgba(92,235,210,.045); }
+.status-panel { background: linear-gradient(145deg, rgba(19, 29, 43, .96), rgba(12, 17, 28, .97)); }
+.status-row-icon, .support-info-icon, .mini-icon { color: var(--cyan); background: rgba(92,235,210,.075); }
+.ticket-card-heading h3, .faq-intro h2, .section-heading h2 { letter-spacing: -.045em; }
+.ticket-card input:focus, .ticket-card select:focus, .ticket-card textarea:focus { border-color: rgba(92,235,210,.6); box-shadow: 0 0 0 3px rgba(92,235,210,.08); }
+.launcher-panel { background: radial-gradient(circle at 18% 50%, rgba(92,235,210,.09), transparent 35%), linear-gradient(145deg, #141c2c, #0e1421); }
+.launcher-core { background: linear-gradient(135deg, #68efd5, #9b8bff); color: #0a1119; font-weight: 900; }
+.faq-item { background: rgba(18, 25, 38, .78); }
+.site-footer { border-color: rgba(194,213,237,.09); background: rgba(7,10,17,.75); }
+.mobile-dock { border-color: rgba(194,213,237,.16); background: rgba(13,19,29,.9); backdrop-filter: blur(24px); }
+.mobile-dock a.is-active, .mobile-dock a:hover { color: var(--cyan); }
+
+@media (max-width: 760px) {
+  .site-header { background: rgba(8,11,18,.92); }
+  .plan-card, .ticket-card { border-radius: 19px; }
+  .mobile-dock { box-shadow: 0 -12px 35px rgba(0,0,0,.22); }
+}
