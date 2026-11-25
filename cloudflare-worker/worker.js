@@ -1,4 +1,5 @@
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const PASSWORD_ITERATIONS = 600000;
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime',
   'application/pdf', 'text/plain'
@@ -32,11 +33,14 @@ function makeId(prefix = 'RZ-') {
   const bytes = crypto.getRandomValues(new Uint8Array(7));
   return prefix + [...bytes].map(value => alphabet[value % alphabet.length]).join('').slice(0, 6);
 }
+function botToken(env) { return env.MY_API_KEY_TG || env.TELEGRAM_BOT_TOKEN || ''; }
+function adminTelegramId(env) { return env.ADMIN_TG || env.ADMIN_TELEGRAM_ID || ''; }
+function googleClientId(env) { return env.GOOGLE_CLIENT_ID || env.google_client_id || ''; }
 function requireConfigured(env) {
-  return Boolean(env.TELEGRAM_BOT_TOKEN && env.ADMIN_TELEGRAM_ID);
+  return Boolean(botToken(env) && adminTelegramId(env));
 }
 async function telegram(env, method, payload) {
-  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+  const response = await fetch(`https://api.telegram.org/bot${botToken(env)}/${method}`, {
     method: 'POST',
     headers: payload instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
     body: payload instanceof FormData ? payload : JSON.stringify(payload)
@@ -46,7 +50,7 @@ async function telegram(env, method, payload) {
   return result;
 }
 async function sendAdmin(env, message) {
-  return telegram(env, 'sendMessage', { chat_id: String(env.ADMIN_TELEGRAM_ID), text: message, disable_web_page_preview: true });
+  return telegram(env, 'sendMessage', { chat_id: String(adminTelegramId(env)), text: message, disable_web_page_preview: true });
 }
 function getOrigin(request, env) {
   const origin = request.headers.get('Origin') || '';
@@ -67,6 +71,180 @@ async function hitRateLimit(request, env, action, max, windowSeconds) {
   await env.DB.prepare(`INSERT INTO request_limits (subject_hash, action, window_start, count) VALUES (?, ?, ?, 1) ON CONFLICT(subject_hash, action) DO UPDATE SET count = CASE WHEN request_limits.window_start = excluded.window_start THEN request_limits.count + 1 ELSE 1 END, window_start = excluded.window_start`).bind(subject, action, slot).run();
   const row = await env.DB.prepare('SELECT count FROM request_limits WHERE subject_hash = ? AND action = ?').bind(subject, action).first();
   return Number(row?.count || 0) > max;
+}
+
+let googleJwksCache = null;
+let googleJwksExpires = 0;
+
+function base64UrlBytes(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+function base64UrlJson(value) {
+  return JSON.parse(new TextDecoder().decode(base64UrlBytes(value)));
+}
+async function googleSigningKey(kid) {
+  const now = Date.now();
+  if (!googleJwksCache || now >= googleJwksExpires) {
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/certs', {
+      headers: { Accept: 'application/json' },
+      cf: { cacheTtl: 1800, cacheEverything: true }
+    });
+    if (!response.ok) throw new Error('Не вдалося перевірити підпис Google.');
+    const data = await response.json();
+    googleJwksCache = Array.isArray(data.keys) ? data.keys : [];
+    googleJwksExpires = now + 30 * 60 * 1000;
+  }
+  const key = googleJwksCache.find(item => item.kid === kid && item.kty === 'RSA' && item.use === 'sig');
+  if (!key) {
+    googleJwksExpires = 0;
+    throw new Error('Ключ підпису Google не знайдено. Спробуй ще раз.');
+  }
+  return key;
+}
+async function verifyGoogleCredential(token, env) {
+  const clientId = googleClientId(env);
+  if (!clientId) throw new Error('Google Client ID ще не налаштовано в Cloudflare Worker.');
+  if (typeof token !== 'string' || token.length < 100 || token.length > 10000) throw new Error('Google не надав коректне підтвердження.');
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('Некоректний Google ID token.');
+  const header = base64UrlJson(parts[0]);
+  const claims = base64UrlJson(parts[1]);
+  if (header.alg !== 'RS256' || !header.kid) throw new Error('Непідтримуваний підпис Google.');
+  const jwk = await googleSigningKey(header.kid);
+  const publicKey = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const validSignature = await crypto.subtle.verify(
+    'RSASSA-PKCS1-v1_5', publicKey, base64UrlBytes(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
+  );
+  const now = Math.floor(Date.now() / 1000);
+  const audienceOk = Array.isArray(claims.aud) ? claims.aud.includes(clientId) : claims.aud === clientId;
+  if (!validSignature || !audienceOk || !['accounts.google.com', 'https://accounts.google.com'].includes(claims.iss)
+      || !Number.isFinite(Number(claims.exp)) || Number(claims.exp) <= now
+      || (claims.iat && Number(claims.iat) > now + 60)
+      || claims.email_verified !== true || typeof claims.sub !== 'string' || typeof claims.email !== 'string') {
+    throw new Error('Google не підтвердив цей акаунт. Перевір Client ID та спробуй ще раз.');
+  }
+  return {
+    sub: text(claims.sub, 128),
+    email: text(claims.email, 254).toLowerCase(),
+    name: text(claims.name || '', 100)
+  };
+}
+function constantTimeStringEqual(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string' || left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index++) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return difference === 0;
+}
+async function createAccountSession(env, accountId) {
+  const token = randomToken(32);
+  const tokenHash = await sha256(token);
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + 14 * 86400;
+  await env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').bind(now).run();
+  await env.DB.prepare('INSERT INTO auth_sessions (token_hash, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(tokenHash, accountId, now, expiresAt).run();
+  await env.DB.prepare('UPDATE accounts SET last_login_at = ? WHERE id = ?').bind(now, accountId).run();
+  const account = await env.DB.prepare('SELECT id, email, full_name FROM accounts WHERE id = ?').bind(accountId).first();
+  return { ok: true, sessionToken: token, expiresAt, user: { id: account.id, email: account.email, fullName: account.full_name } };
+}
+async function authenticateRequest(request, env) {
+  const authorization = request.headers.get('Authorization') || '';
+  const match = authorization.match(/^Bearer\s+([A-Za-z0-9_-]{40,100})$/);
+  if (!match || !env.DB) return null;
+  const tokenHash = await sha256(match[1]);
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(`SELECT a.id, a.email, a.full_name, s.token_hash, s.expires_at
+    FROM auth_sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at >= ?`)
+    .bind(tokenHash, now).first();
+  return row ? { id: row.id, email: row.email, fullName: row.full_name, tokenHash } : null;
+}
+async function verifyGoogleForRegistration(request, env, origin) {
+  if (!env.DB) return json({ ok: false, error: 'База акаунтів ще не налаштована.' }, 503, origin);
+  if (await hitRateLimit(request, env, 'auth-google', 12, 900)) return json({ ok: false, error: 'Забагато спроб Google-входу. Спробуй пізніше.' }, 429, origin);
+  let body;
+  try { body = await parseJson(request); } catch { return json({ ok: false, error: 'Некоректний запит.' }, 400, origin); }
+  try {
+    const identity = await verifyGoogleCredential(body.credential, env);
+    const existing = await env.DB.prepare('SELECT id FROM accounts WHERE google_sub = ? OR email = ?').bind(identity.sub, identity.email).first();
+    return json({ ok: true, registered: Boolean(existing), email: identity.email, name: identity.name }, 200, origin);
+  } catch (error) {
+    return json({ ok: false, error: text(error.message, 220) || 'Не вдалося перевірити Google.' }, 401, origin);
+  }
+}
+async function fakeLoginSalt(email, env) {
+  if (!env.AUTH_SALT_PEPPER) throw new Error('Не налаштовано AUTH_SALT_PEPPER у Cloudflare Worker.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.AUTH_SALT_PEPPER), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(email)));
+  let binary = '';
+  for (const value of signature.slice(0, 16)) binary += String.fromCharCode(value);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function getLoginSalt(request, env, origin) {
+  if (!env.DB) return json({ ok: false, error: 'База акаунтів ще не налаштована.' }, 503, origin);
+  if (await hitRateLimit(request, env, 'auth-login-salt', 20, 900)) return json({ ok: false, error: 'Забагато спроб входу. Спробуй пізніше.' }, 429, origin);
+  let body;
+  try { body = await parseJson(request); } catch { return json({ ok: false, error: 'Некоректний запит.' }, 400, origin); }
+  const email = text(body.email, 254).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ ok: false, error: 'Перевір адресу електронної пошти.' }, 400, origin);
+  const account = await env.DB.prepare('SELECT password_salt, password_iterations FROM accounts WHERE email = ?').bind(email).first();
+  // Unknown emails receive a deterministic, secret-derived salt with the same response shape to reduce account enumeration.
+  let salt;
+  try { salt = account?.password_salt || await fakeLoginSalt(email, env); }
+  catch (error) { return json({ ok: false, error: text(error.message, 180) }, 503, origin); }
+  return json({ ok: true, salt, iterations: Number(account?.password_iterations || PASSWORD_ITERATIONS) }, 200, origin);
+}
+
+async function registerAccount(request, env, origin) {
+  if (!env.DB) return json({ ok: false, error: 'База акаунтів ще не налаштована.' }, 503, origin);
+  if (await hitRateLimit(request, env, 'auth-register', 5, 3600)) return json({ ok: false, error: 'Досягнуто ліміт реєстрацій. Спробуй пізніше.' }, 429, origin);
+  let body;
+  try { body = await parseJson(request); } catch { return json({ ok: false, error: 'Некоректний запит.' }, 400, origin); }
+  const fullName = text(body.fullName, 100).replace(/\s+/g, ' ');
+  const passwordSalt = text(body.passwordSalt, 100);
+  const passwordProof = text(body.passwordProof, 100);
+  if (fullName.length < 2 || !/^[A-Za-z0-9_-]{20,80}$/.test(passwordSalt) || !/^[A-Za-z0-9_-]{40,80}$/.test(passwordProof)) {
+    return json({ ok: false, error: 'Не вдалося підготувати захищений пароль. Онови сторінку та повтори спробу.' }, 400, origin);
+  }
+  try {
+    const identity = await verifyGoogleCredential(body.credential, env);
+    const existing = await env.DB.prepare('SELECT id FROM accounts WHERE google_sub = ? OR email = ?').bind(identity.sub, identity.email).first();
+    if (existing) return json({ ok: false, error: 'Цей Google-акаунт уже має реєстрацію. Увійди через email і пароль.' }, 409, origin);
+    const passwordVerifierHash = await sha256(passwordProof);
+    const now = Math.floor(Date.now() / 1000);
+    const inserted = await env.DB.prepare('INSERT INTO accounts (google_sub, email, full_name, password_salt, password_hash, password_iterations, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(identity.sub, identity.email, fullName, passwordSalt, passwordVerifierHash, PASSWORD_ITERATIONS, now, now).run();
+    return json(await createAccountSession(env, inserted.meta.last_row_id), 201, origin);
+  } catch (error) {
+    if (String(error.message || '').includes('UNIQUE')) return json({ ok: false, error: 'Акаунт із цією поштою вже існує. Спробуй увійти.' }, 409, origin);
+    return json({ ok: false, error: text(error.message, 220) || 'Не вдалося створити акаунт.' }, 400, origin);
+  }
+}
+async function loginAccount(request, env, origin) {
+  if (!env.DB) return json({ ok: false, error: 'База акаунтів ще не налаштована.' }, 503, origin);
+  if (await hitRateLimit(request, env, 'auth-login', 12, 900)) return json({ ok: false, error: 'Забагато спроб входу. Спробуй пізніше.' }, 429, origin);
+  let body;
+  try { body = await parseJson(request); } catch { return json({ ok: false, error: 'Некоректний запит.' }, 400, origin); }
+  const email = text(body.email, 254).toLowerCase();
+  const passwordProof = text(body.passwordProof, 100);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[A-Za-z0-9_-]{40,80}$/.test(passwordProof)) return json({ ok: false, error: 'Неправильна пошта або пароль.' }, 401, origin);
+  const account = await env.DB.prepare('SELECT id, password_hash FROM accounts WHERE email = ?').bind(email).first();
+  const suppliedHash = await sha256(passwordProof);
+  if (!account || !constantTimeStringEqual(suppliedHash, account.password_hash)) return json({ ok: false, error: 'Неправильна пошта або пароль.' }, 401, origin);
+  return json(await createAccountSession(env, account.id), 200, origin);
+}
+async function getCurrentAccount(request, env, origin) {
+  const account = await authenticateRequest(request, env);
+  if (!account) return json({ ok: false, error: 'Сесія завершилася. Увійди знову.' }, 401, origin);
+  return json({ ok: true, user: { id: account.id, email: account.email, fullName: account.fullName } }, 200, origin);
+}
+async function logoutAccount(request, env, origin) {
+  const account = await authenticateRequest(request, env);
+  if (account) await env.DB.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').bind(account.tokenHash).run();
+  return json({ ok: true }, 200, origin);
 }
 
 async function createSupportTicket(request, env, origin) {
@@ -172,7 +350,7 @@ async function getLaunchStatus(request, env, origin) {
 
 async function handleTelegramWebhook(request, env) {
   if (!env.TELEGRAM_WEBHOOK_SECRET || request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.TELEGRAM_WEBHOOK_SECRET) return new Response('Forbidden', { status: 403 });
-  if (!env.DB || !env.TELEGRAM_BOT_TOKEN) return new Response('Not configured', { status: 503 });
+  if (!env.DB || !botToken(env)) return new Response('Not configured', { status: 503 });
   let update;
   try { update = await request.json(); } catch { return new Response('Bad Request', { status: 400 }); }
   const message = update.message;
@@ -211,10 +389,10 @@ async function handleTelegramWebhook(request, env) {
   }
 
   // Admin commands are accepted only in the admin's private chat, never in groups.
-  const isAdmin = env.ADMIN_TELEGRAM_ID
-    && telegramUserId === String(env.ADMIN_TELEGRAM_ID)
+  const isAdmin = adminTelegramId(env)
+    && telegramUserId === String(adminTelegramId(env))
     && message.chat?.type === 'private'
-    && chatId === String(env.ADMIN_TELEGRAM_ID);
+    && chatId === String(adminTelegramId(env));
   if (!isAdmin) {
     await telegram(env, 'sendMessage', { chat_id: chatId, text: 'Цей бот приймає підтвердження Ryzor. Команди адміністратора недоступні.' });
     return new Response('OK');
@@ -287,7 +465,7 @@ async function submitPayment(request, env, origin) {
       const method = file.type.startsWith('image/') && file.size <= 10 * 1048576 ? 'sendPhoto' : file.type.startsWith('video/') ? 'sendVideo' : 'sendDocument';
       const field = method === 'sendPhoto' ? 'photo' : method === 'sendVideo' ? 'video' : 'document';
       const telegramForm = new FormData();
-      telegramForm.set('chat_id', String(env.ADMIN_TELEGRAM_ID));
+      telegramForm.set('chat_id', String(adminTelegramId(env)));
       telegramForm.set('caption', details.slice(0, 1000));
       telegramForm.set(field, file, text(file.name, 90) || 'ryzor-proof');
       await telegram(env, method, telegramForm);
@@ -310,12 +488,18 @@ export default {
       return new Response(null, { status: 204, headers: {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Max-Age': '86400', 'Vary': 'Origin'
       }});
     }
     if (!origin) return json({ ok: false, error: 'Origin not allowed' }, 403);
     if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'ryzor-api' }, 200, origin);
+    if (request.method === 'POST' && url.pathname === '/api/auth/google/verify') return verifyGoogleForRegistration(request, env, origin);
+    if (request.method === 'POST' && url.pathname === '/api/auth/register') return registerAccount(request, env, origin);
+    if (request.method === 'POST' && url.pathname === '/api/auth/salt') return getLoginSalt(request, env, origin);
+    if (request.method === 'POST' && url.pathname === '/api/auth/login') return loginAccount(request, env, origin);
+    if (request.method === 'POST' && url.pathname === '/api/auth/me') return getCurrentAccount(request, env, origin);
+    if (request.method === 'POST' && url.pathname === '/api/auth/logout') return logoutAccount(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/payment') return submitPayment(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/api/support/create') return createSupportTicket(request, env, origin);
     if (request.method === 'POST' && url.pathname === '/api/support/message') return addSupportMessage(request, env, origin);

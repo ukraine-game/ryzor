@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080909">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Створення акаунта та вхід у RYZOR Cloud Gaming.">
+  <title>Акаунт — RYZOR</title>
+  <link rel="stylesheet" href="auth.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+  <main class="auth-shell">
+    <header class="auth-top">
+      <a class="brand" href="index.html"><span class="brand-mark">R<span>/</span></span><span>RYZOR</span></a>
+      <a class="back-link" href="index.html">← НА ГОЛОВНУ</a>
+    </header>
+
+    <section class="auth-layout">
+      <aside class="auth-aside">
+        <div class="eyebrow"><i></i> RYZOR ID / ACCOUNT</div>
+        <h1>ТВОЯ<br><span>ТОЧКА</span><br>ДОСТУПУ.</h1>
+        <p>Один акаунт для твоєї бібліотеки, підписки та звернень до підтримки.</p>
+        <div class="aside-foot"><span>IDENTITY SYSTEM</span><b>01 — 03</b></div>
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+      </aside>
+
+      <section class="auth-card" aria-labelledby="authTitle">
+        <div class="card-topline"><span>ACCOUNT PORTAL</span><span>SECURE ACCESS / 01</span></div>
+        <div id="authMain">
+          <div class="auth-heading">
+            <div class="eyebrow">WELCOME TO RYZOR</div>
+            <h2 id="authTitle">Увійти в акаунт</h2>
+            <p id="authSubtitle">Продовжуй з того місця, де зупинився.</p>
+          </div>
+
+          <div class="mode-switch" role="tablist" aria-label="Тип доступу">
+            <button class="mode-tab is-active" type="button" data-mode="login" role="tab" aria-selected="true">Вхід</button>
+            <button class="mode-tab" type="button" data-mode="register" role="tab" aria-selected="false">Реєстрація</button>
+          </div>
+
+          <section class="auth-mode" id="loginPanel">
+            <form id="loginForm" class="auth-form">
+              <label class="field"><span>ЕЛЕКТРОННА ПОШТА</span><input name="email" type="email" autocomplete="email" placeholder="name@example.com" maxlength="254" required></label>
+              <label class="field"><span>ПАРОЛЬ</span><input name="password" type="password" autocomplete="current-password" placeholder="Твій пароль" minlength="10" maxlength="128" required></label>
+              <button class="submit-button" type="submit">УВІЙТИ <span>↗</span></button>
+            </form>
+            <p class="switch-note">Ще немає акаунта? <button type="button" class="inline-action" data-switch="register">Створити</button><br><a class="forgot-link" href="index.html#support">Потрібна допомога з доступом?</a></p>
+          </section>
+
+          <section class="auth-mode" id="registerPanel" hidden>
+            <div id="googleStep">
+              <div class="step-line"><span>01</span><div><b>Підтверди Google-акаунт</b><small>Це обов’язковий перший крок реєстрації.</small></div></div>
+              <div id="googleButton" class="google-button-wrap"></div>
+              <p class="fineprint">Google передає RYZOR підтверджений email та ідентифікатор акаунта. Пароль Google ми не отримуємо.</p>
+            </div>
+            <form id="registerForm" class="auth-form" hidden>
+              <div class="verified-email"><span class="verified-dot">✓</span><div><small>GOOGLE ПІДТВЕРДЖЕНО</small><b id="verifiedEmail">—</b></div><button type="button" id="changeGoogle" class="change-link">ЗМІНИТИ</button></div>
+              <div class="step-line"><span>02</span><div><b>Заповни профіль</b><small>Вкажи ім’я та створи пароль для входу.</small></div></div>
+              <label class="field"><span>ПОВНЕ ІМ’Я</span><input name="fullName" type="text" autocomplete="name" placeholder="Ім’я та прізвище" minlength="2" maxlength="100" required></label>
+              <label class="field"><span>ПРИДУМАЙ ПАРОЛЬ</span><input name="password" type="password" autocomplete="new-password" placeholder="Мінімум 10 символів" minlength="10" maxlength="128" required></label>
+              <label class="field"><span>ПОВТОРИ ПАРОЛЬ</span><input name="passwordConfirm" type="password" autocomplete="new-password" placeholder="Введи пароль ще раз" minlength="10" maxlength="128" required></label>
+              <div class="password-rule">Не використовуй пароль від Google, пошти чи інших сервісів.</div>
+              <button class="submit-button" type="submit">СТВОРИТИ АКАУНТ <span>↗</span></button>
+            </form>
+            <p class="switch-note">Вже маєш акаунт? <button type="button" class="inline-action" data-switch="login">Увійти</button></p>
+          </section>
+        </div>
+
+        <section id="accountPanel" class="account-panel" hidden>
+          <div class="account-avatar" id="accountAvatar">R</div>
+          <div class="eyebrow">SIGNED IN</div>
+          <h2 id="accountName">Твій акаунт</h2>
+          <p id="accountEmail" class="account-email"></p>
+          <div class="account-meta"><span>СТАТУС</span><b>АКТИВНИЙ ПРОФІЛЬ</b></div>
+          <a href="index.html" class="submit-button account-home">ПЕРЕЙТИ НА ГОЛОВНУ <span>↗</span></a>
+          <button type="button" class="logout-button" id="logoutButton">ВИЙТИ З АКАУНТА</button>
+        </section>
+
+        <div class="auth-status" id="authStatus" role="status" aria-live="polite" hidden></div>
+        <div class="card-bottomline"><span>RYZOR ACCOUNT / 2026</span><span>YOUR DATA STAYS YOURS</span></div>
+      </section>
+    </section>
+    <footer class="auth-footer"><span>© RYZOR CLOUD GAMING</span><span>TERMS · PRIVACY · SUPPORT</span></footer>
+  </main>
+</body>
+</html>

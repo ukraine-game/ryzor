@@ -46,6 +46,18 @@
     navToggle?.setAttribute('aria-expanded', 'false');
   }));
 
+  // Reflect an account already signed in during this browser tab.
+  const accountLink = $('#accountLink');
+  if (accountLink) {
+    try {
+      const user = JSON.parse(sessionStorage.getItem('ryzor.auth.user.v1') || 'null');
+      if (user && typeof user.fullName === 'string') {
+        accountLink.textContent = `МОЯ ОБЛІКОВКА · ${user.fullName.split(/\s+/)[0]} ↗`;
+        accountLink.setAttribute('aria-label', `Мій акаунт: ${user.fullName}`);
+      }
+    } catch { sessionStorage.removeItem('ryzor.auth.user.v1'); }
+  }
+
   // Search and filters
   let activeFilter = 'all';
   const gameCards = $$('.game-card');
