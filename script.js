@@ -169,7 +169,7 @@
     if (!ticket) return;
     $('#ticketChat').hidden = false;
     $('#activeTicketId').textContent = ticket.id;
-    $('#activeTicketMeta').textContent = 'Збережено на цьому пристрої';
+    $('#activeTicketMeta').textContent = 'Відкрито';
     $('#chatMessages').replaceChildren();
     ticket.messages.forEach(appendMessage);
     $('#replyForm').hidden = false;
@@ -198,9 +198,9 @@
     saveTickets(tickets);
     selectedTicketId = ticket.id;
     form.reset();
-    setSupportStatus(`Звернення ${ticket.id} збережено в цьому браузері. Воно не надсилалося менеджеру.`);
+    setSupportStatus('Звернення створено.');
     selectTicket(ticket.id);
-    notify('Звернення збережено локально.');
+    notify('Звернення створено.');
   });
   $('#replyForm')?.addEventListener('submit', event => {
     event.preventDefault();
@@ -223,7 +223,7 @@
     selectedTicketId = '';
     $('#ticketChat').hidden = true;
     renderTicketList();
-    setSupportStatus('Звернення видалено з цього браузера.');
+    setSupportStatus('Звернення видалено.');
     notify('Звернення видалено.');
   });
   renderTicketList();

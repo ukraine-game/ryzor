@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f6f6f8">
   <meta name="referrer" content="no-referrer">
-  <meta name="description" content="Оформлення підписки RYZOR.">
-  <title>RYZOR — оформлення підписки</title>
+  <meta name="description" content="Оформлення тарифу RYZOR.">
+  <title>RYZOR — оформлення тарифу</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -15,93 +15,56 @@
   <script src="payment.js" defer></script>
 </head>
 <body class="payment-page">
-  <div class="payment-glow payment-glow-a" aria-hidden="true"></div>
-  <div class="payment-glow payment-glow-b" aria-hidden="true"></div>
   <header class="payment-header">
     <a class="payment-brand" href="index.html" aria-label="RYZOR — на головну"><svg class="logo-mark" viewBox="0 0 100 91" aria-hidden="true"><path d="M16.4 43.9 0 63.4v7.1l15.7 20.2h29.5L29.3 68.2l15.5-24.1z"/><path d="M0 0h77c14 0 23 11 23 25v13c0 11-7 21-18 30l15.5 22.7H68.2L52.5 69v-5L71 41c2-3 2.5-6 1.5-9.5-.8-3-3.5-6-9.5-6H17.3L0 4.5z"/></svg><span>RYZOR</span></a>
     <a class="payment-back" href="index.html#plans"><span aria-hidden="true">←</span> Повернутися до тарифів</a>
   </header>
   <main class="payment-main">
-    <div class="payment-heading"><h1>Оформлення підписки</h1><p>Заповни дані та продовж у Telegram.</p></div>
+    <div class="payment-heading"><h1>Оформлення тарифу</h1><p>Обери тариф і створи серійний код для менеджера.</p></div>
     <div class="payment-steps" aria-label="Етапи оформлення">
-      <div class="payment-step is-active" data-step-indicator="1"><span>1</span><b>Дані</b></div><i></i>
-      <div class="payment-step" data-step-indicator="2"><span>2</span><b>Підтвердження</b></div>
+      <div class="payment-step is-active" data-step-indicator="1"><span>1</span><b>Тариф</b></div><i></i>
+      <div class="payment-step" data-step-indicator="2"><span>2</span><b>Серійний код</b></div>
     </div>
+
     <section class="checkout-layout" id="checkoutStepOne">
       <form class="checkout-card" id="checkoutForm">
-        <div class="checkout-card-head"><div><span class="checkout-kicker">Крок 1 з 2</span><h2>Твої дані</h2></div><span class="checkout-head-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.3"/><path d="M5 20c.6-3.1 3.2-5.1 7-5.1s6.4 2 7 5.1"/></svg></span></div>
+        <div class="checkout-card-head"><div><span class="checkout-kicker">Крок 1 з 2</span><h2>Твоє замовлення</h2></div><span class="checkout-head-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16M6 7V4h12v3M6 7v13h12V7M9 11h6M9 15h6"/></svg></span></div>
         <div class="checkout-fields">
-          <label class="checkout-field"><span>Нікнейм у Ryzor</span><input name="nickname" type="text" minlength="2" maxlength="24" placeholder="Player_ua" autocomplete="nickname" required></label>
-          <label class="checkout-field"><span>Повне ім’я</span><input name="fullName" id="checkoutFullName" type="text" minlength="3" maxlength="100" placeholder="Ім’я та прізвище" required></label>
-          <label class="checkout-field"><span>Електронна пошта</span><input name="email" id="checkoutEmail" type="email" maxlength="254" placeholder="name@example.com" required></label>
-          <label class="checkout-field"><span>Telegram <em>необов’язково</em></span><input name="telegram" type="text" maxlength="40" placeholder="@username"></label>
+          <label class="checkout-field"><span>Нікнейм у Ryzor</span><input name="nickname" id="checkoutNickname" type="text" minlength="2" maxlength="24" placeholder="Player_ua" autocomplete="nickname" required></label>
           <label class="checkout-field"><span>Тариф</span><select name="plan" id="checkoutPlan" required><option value="free">Безкоштовний — 0 ₴</option><option value="pro" selected>Професійний — 199 ₴ / місяць</option><option value="unlimited">Безлімітний — 399 ₴ / місяць</option></select></label>
+          <input type="hidden" name="fullName" id="checkoutFullName">
+          <input type="hidden" name="email" id="checkoutEmail">
         </div>
         <label class="checkout-consent checkout-privacy-consent"><input id="checkoutPrivacyConsent" type="checkbox" required><span>Я ознайомився(-лася) з <a href="privacy.html" target="_blank" rel="noopener noreferrer">Політикою конфіденційності</a>.</span></label>
-        <button class="checkout-primary" id="checkoutContinue" type="submit">До оплати <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+        <button class="checkout-primary" id="checkoutContinue" type="submit">Створити серійний код <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
         <div class="payment-submit-status is-error" id="checkoutStepStatus" role="status" aria-live="polite" hidden></div>
       </form>
       <aside class="order-summary">
-        <span class="summary-kicker">Твоє замовлення</span>
-        <div class="summary-plan-icon"><svg viewBox="0 0 24 24"><path d="m12 2 2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></div>
+        <span class="summary-kicker">Обраний тариф</span>
         <h3 id="summaryPlanName">Професійний</h3><p id="summaryPlanDescription">Для регулярних ігрових сесій.</p>
         <div class="summary-price"><strong id="summaryPlanPrice">199 ₴</strong><span id="summaryPlanPeriod">/ 30 днів</span></div>
         <div class="summary-divider"></div>
         <div class="summary-line"><span>Тариф</span><b id="summaryPlanShort">Професійний</b></div>
         <div class="summary-line"><span>Тривалість</span><b id="summaryPlanDuration">30 днів</b></div>
-        <div class="summary-line summary-total"><span>До сплати</span><b id="summaryTotal">199 ₴</b></div>
+        <div class="summary-line summary-total"><span>Вартість</span><b id="summaryTotal">199 ₴</b></div>
       </aside>
-    </section>
-
-    <section class="payment-details-layout" id="checkoutStepTwo" hidden>
-      <div class="payment-details-main">
-        <div class="checkout-card payment-instructions-card">
-          <div class="checkout-card-head"><div><span class="checkout-kicker">Крок 2 з 2</span><h2>Підтвердження</h2></div><span class="payment-method-tag"><i></i> Telegram</span></div>
-          <p class="payment-order-caption">Тариф <b id="paymentOrderPlan">Професійний</b></p>
-          <div class="bank-card local-payment-card" aria-label="Зв’язок із менеджером">
-            <div class="bank-card-top"><span class="bank-card-brand">RYZOR<span> PAY</span></span><span class="local-card-label">MANAGER</span></div>
-            <div class="bank-chip" aria-hidden="true"><span></span><i></i></div>
-            <div class="bank-card-number">Реквізити у менеджера</div>
-            <div class="bank-card-bottom"><div><small>Контакт</small><strong>@st0fen</strong></div><div><small>Сума</small><strong id="paymentAmount">199 ₴</strong></div></div>
-            <div class="bank-card-orbit" aria-hidden="true"></div>
-          </div>
-          <div class="serial-panel"><div><small>СЕРІЙНИЙ НОМЕР</small><strong id="paymentSerial">—</strong></div><button class="copy-requisite" id="copySerial" type="button" aria-label="Скопіювати серійний номер">Копіювати</button></div>
-          <p class="serial-hint">Вкажи цей номер у повідомленні менеджеру.</p>
-          <div class="payment-timer-row"><div><span class="timer-label">Час для оформлення</span><p>Після завершення часу створи нове замовлення.</p></div><div class="payment-timer" id="paymentTimer" role="timer" aria-live="off">10:00</div></div>
-        </div>
-      </div>
-      <div class="checkout-card proof-card">
-        <div class="checkout-card-head"><div><span class="checkout-kicker">Квитанція</span><h2>Додай підтвердження</h2></div><span class="proof-head-icon"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span></div>
-        <p class="proof-description">Обери файл квитанції. Після відкриття Telegram прикріпи його в чаті вручну.</p>
-        <label class="upload-zone" id="uploadZone" for="paymentProof">
-          <input id="paymentProof" name="attachment" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,.pdf,.png,.jpg,.jpeg,.webp,.mp4,.mov,.webm" hidden>
-          <span class="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span>
-          <strong>Обрати файл</strong><span>Фото, відео або PDF</span><small>До 20 МБ</small>
-        </label>
-        <div class="file-preview" id="filePreview" hidden><span class="file-preview-icon"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5"/></svg></span><div><strong id="fileName">Файл</strong><small id="fileSize">0 МБ</small></div><button id="removeFile" type="button" aria-label="Видалити файл">×</button></div>
-        <label class="checkout-field proof-note"><span>Коментар <em>необов’язково</em></span><textarea id="paymentComment" maxlength="500" rows="3" placeholder="Уточнення до платежу…"></textarea></label>
-        <label class="checkout-consent proof-consent"><input id="proofConsent" type="checkbox" required><span>Підтверджую, що файл стосується оплати й не містить PIN, CVV або повного номера картки.</span></label>
-        <button class="checkout-primary" id="sendPaymentProof" type="button" disabled>Відкрити Telegram <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
-        <a id="telegramFallbackLink" class="telegram-fallback" href="https://t.me/st0fen" target="_blank" rel="noopener noreferrer" hidden>Відкрити @st0fen</a>
-        <div class="payment-submit-status" id="paymentSubmitStatus" role="status" aria-live="polite" hidden></div>
-        <p class="checkout-footnote">Сайт не передає файл. Прикріпи його до повідомлення в Telegram самостійно.</p>
-      </div>
     </section>
 
     <section class="payment-success" id="paymentSuccess" hidden>
       <div class="success-mark"><svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></svg></div>
-      <span class="checkout-kicker">Заявка підготовлена</span>
-      <h2>Дякуємо!</h2>
-      <p>Відкрий чат із менеджером, встав підготовлений текст і прикріпи квитанцію вручну. Після перевірки менеджер повідомить про результат.</p>
-      <div class="success-order"><span>Серійний номер</span><b id="successOrderId">—</b></div>
-      <label class="checkout-field success-draft-label"><span>Повідомлення для менеджера</span><textarea id="telegramDraft" rows="7" readonly></textarea></label>
-      <button class="checkout-primary success-copy-button" type="button" id="copyTelegramDraft">Скопіювати повідомлення</button>
-      <a id="telegramSuccessLink" class="telegram-fallback success-telegram-link" href="https://t.me/st0fen" target="_blank" rel="noopener noreferrer">Відкрити @st0fen у Telegram</a>
-      <a class="checkout-primary success-home" href="index.html">На головну <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+      <span class="checkout-kicker">КОД СТВОРЕНО</span>
+      <h2>Напиши менеджеру</h2>
+      <p>Щоб отримати тариф, напиши менеджеру у Telegram та надішли повідомлення з цим серійним кодом.</p>
+      <div class="success-plan">Обраний тариф: <strong id="successPlanName">Професійний</strong></div>
+      <div class="success-order"><span>Серійний код</span><b id="successOrderId">—</b></div>
+      <button class="checkout-primary success-copy-button" type="button" id="copySerial">Скопіювати повідомлення</button>
+      <a class="telegram-fallback success-telegram-link" href="https://t.me/st0fen" target="_blank" rel="noopener noreferrer">Написати менеджеру у Telegram</a>
+      <a class="checkout-primary success-home" href="index.html">Повернутися на сайт</a>
     </section>
-    <p class="payment-legal">Реквізити для переказу надає менеджер у приватному чаті. Перевір отримувача й суму разом із батьками або законним представником перед підтвердженням платежу.</p>
+
+    <p class="payment-legal">Умови отримання тарифу та наступні кроки узгоджуються з менеджером у Telegram.</p>
   </main>
   <div class="payment-toast" id="paymentToast" role="status" aria-live="polite"></div>
-  <footer class="payment-footer"><span>© <span id="paymentYear"></span> RYZOR</span><span>Локальне оформлення</span><a href="privacy.html">Політика конфіденційності</a></footer>
+  <footer class="payment-footer"><span>© <span id="paymentYear"></span> RYZOR</span><a href="privacy.html">Політика конфіденційності</a></footer>
 </body>
 </html>
