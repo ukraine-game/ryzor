@@ -1,301 +1,169 @@
 (() => {
   'use strict';
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const config = window.RYZOR_CONFIG || {};
-  const apiBase = String(config.apiBase || '').replace(/\/$/, '');
-  const googleClientId = String(config.googleClientId || '').trim();
-  const SESSION_KEY = 'ryzor.auth.session.v1';
-  let pendingCredential = '';
-  let googleInitialized = false;
+  const $ = selector => document.querySelector(selector);
+  const ACCOUNT_KEY = 'ryzor.local.accounts.v1';
+  const SESSION_KEY = 'ryzor.local.session.v1';
+  const ORDER_KEY = 'ryzor.local.orders.v1';
+  const TICKET_KEY = 'ryzor.local.support.v1';
+  const ITERATIONS = 240000;
+  let mode = 'login';
 
+  const read = (key, fallback) => {
+    try { const value = JSON.parse(localStorage.getItem(key) || 'null'); return value ?? fallback; }
+    catch { return fallback; }
+  };
+  const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+  const accounts = () => { const value = read(ACCOUNT_KEY, []); return Array.isArray(value) ? value : []; };
+  const bytesToBase64 = bytes => btoa(String.fromCharCode(...bytes));
+  const base64ToBytes = value => Uint8Array.from(atob(value), char => char.charCodeAt(0));
+  const bytesToHex = bytes => [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  async function hashPassword(password, salt) {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: base64ToBytes(salt), iterations: ITERATIONS, hash: 'SHA-256' }, key, 256);
+    return bytesToHex(new Uint8Array(bits));
+  }
+  function currentUser() {
+    const email = String(localStorage.getItem(SESSION_KEY) || '').toLowerCase();
+    return accounts().find(user => user.email === email) || null;
+  }
   function status(message, error = false) {
     const node = $('#authStatus');
     node.textContent = message;
-    node.classList.toggle('is-error', error);
     node.hidden = false;
+    node.classList.toggle('is-error', error);
   }
-  function clearStatus() {
-    const node = $('#authStatus');
-    node.hidden = true;
-    node.textContent = '';
-  }
-  async function api(path, body, token = '') {
-    if (!apiBase) throw new Error('Сервіс тимчасово недоступний. Спробуй трохи пізніше.');
-    const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(`${apiBase}${path}`, {
-      method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
-      headers, body: JSON.stringify(body || {})
+  function switchMode(next) {
+    mode = next;
+    $('#loginPanel').hidden = mode !== 'login';
+    $('#registerPanel').hidden = mode !== 'register';
+    document.querySelectorAll('[data-mode]').forEach(button => {
+      const active = button.dataset.mode === mode;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok !== true) {
-      const detail = String(data.error || '');
-      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
-      throw new Error(internal ? 'Сервіс входу тимчасово недоступний. Спробуй пізніше.' : (detail || `Помилка запиту (${response.status})`));
-    }
-    return data;
+    $('#authTitle').textContent = mode === 'login' ? 'Увійти в акаунт' : 'Створити акаунт';
+    $('#authSubtitle').textContent = mode === 'login' ? 'Продовжуй з того місця, де зупинився.' : 'Заповни дані, щоб створити профіль.';
+    $('#authStatus').hidden = true;
   }
-  const PASSWORD_ITERATIONS = 600000;
-  function toBase64Url(bytes) {
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  function listOrders(email) {
+    const orders = read(ORDER_KEY, []);
+    return Array.isArray(orders) ? orders.filter(order => order.email === email).sort((a,b) => b.createdAt - a.createdAt) : [];
   }
-  function fromBase64Url(value) {
-    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
-    return Uint8Array.from(atob(padded), char => char.charCodeAt(0));
-  }
-  async function derivePasswordProof(password, salt, iterations = PASSWORD_ITERATIONS) {
-    const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: fromBase64Url(salt), iterations }, material, 256);
-    return toBase64Url(new Uint8Array(bits));
-  }
-  function switchMode(mode) {
-    const isLogin = mode === 'login';
-    $('#loginPanel').hidden = !isLogin;
-    $('#registerPanel').hidden = isLogin;
-    $$('.mode-tab').forEach(tab => {
-      const selected = tab.dataset.mode === mode;
-      tab.classList.toggle('is-active', selected);
-      tab.setAttribute('aria-selected', String(selected));
-    });
-    $('#authTitle').textContent = isLogin ? 'Увійти в акаунт' : 'Створити акаунт';
-    $('#authSubtitle').textContent = isLogin ? 'Продовжуй з того місця, де зупинився.' : 'Спочатку Google, потім дані профілю та пароль.';
-    clearStatus();
-    if (!isLogin) setTimeout(() => waitForGoogle(), 0);
-  }
-  $$('.mode-tab').forEach(tab => tab.addEventListener('click', () => switchMode(tab.dataset.mode)));
-  $$('[data-switch]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.switch)));
-
   function showAccount(user) {
     $('#authMain').hidden = true;
     $('#accountPanel').hidden = false;
-    $('#accountName').textContent = user.fullName || 'Твій акаунт';
-    $('#accountEmail').textContent = user.email || '';
-    $('#accountAvatar').textContent = (user.fullName || 'R').trim().charAt(0).toLocaleUpperCase('uk-UA');
-    clearStatus();
-  }
-  function requestedNextUrl() {
-    const raw = new URLSearchParams(location.search).get('next');
-    if (!raw) return null;
-    try {
-      const target = new URL(raw, location.href);
-      if (target.origin !== location.origin || target.pathname.endsWith('/auth.html') || target.pathname.includes('\\')) return null;
-      return target.href;
-    } catch { return null; }
-  }
-  function finishLogin(data) {
-    sessionStorage.setItem(SESSION_KEY, data.sessionToken);
-    sessionStorage.setItem('ryzor.auth.user.v1', JSON.stringify(data.user));
-    showAccount(data.user);
-    loadAccountOverview();
-    status('Акаунт готовий.');
-    const next = requestedNextUrl();
-    if (next) setTimeout(() => location.replace(next), 450);
-  }
-  function renderAccountOverview(data) {
-    const planName = $('#accountPlanName');
-    const planMeta = $('#accountPlanMeta');
-    if (data.subscription) {
-      const names = { free: 'Безкоштовний тариф', pro: 'Професійний', unlimited: 'Безлімітний' };
-      planName.textContent = names[data.subscription.plan_code] || data.subscription.plan_code;
-      planMeta.textContent = data.subscription.ends_at ? `Активна до ${new Date(data.subscription.ends_at * 1000).toLocaleDateString('uk-UA')}` : 'Активна без кінцевої дати';
+    $('#accountName').textContent = user.fullName;
+    $('#accountEmail').textContent = user.email;
+    $('#accountAvatar').textContent = user.fullName.trim().charAt(0).toLocaleUpperCase('uk-UA');
+    const orders = listOrders(user.email);
+    const latest = orders[0];
+    $('#accountPlanName').textContent = latest ? `${latest.planName} — заявка створена` : 'Без активної підписки';
+    $('#accountPlanMeta').textContent = latest ? 'Зв’яжись із менеджером у Telegram для уточнення статусу. Дані заявки збережені лише в цьому браузері.' : 'Після оформлення тут з’явиться локальна історія заявок.';
+    const holder = $('#accountOrders'); holder.replaceChildren();
+    if (!orders.length) {
+      const empty = document.createElement('p'); empty.className = 'account-muted'; empty.textContent = 'Замовлень поки немає.'; holder.append(empty);
     } else {
-      planName.textContent = 'Без активної підписки';
-      planMeta.textContent = 'Після підтвердження замовлення статус з’явиться тут.';
+      orders.slice(0, 5).forEach(order => {
+        const row = document.createElement('div'); row.className = 'account-order-row';
+        const top = document.createElement('div'); top.className = 'account-order-top';
+        const id = document.createElement('b'); id.textContent = order.serial;
+        const state = document.createElement('span'); state.textContent = 'Очікує зв’язку';
+        top.append(id, state);
+        const meta = document.createElement('small'); meta.textContent = `${order.planName} · ${new Intl.NumberFormat('uk-UA').format(order.amount)} ₴ · ${new Date(order.createdAt).toLocaleDateString('uk-UA')}`;
+        row.append(top, meta); holder.append(row);
+      });
     }
-    const holder = $('#accountOrders');
-    holder.replaceChildren();
-    if (!data.orders?.length) {
-      const empty = document.createElement('p'); empty.className = 'account-muted'; empty.textContent = 'Замовлень поки немає.'; holder.append(empty); return;
-    }
-    const states = { awaiting_payment: 'Очікує оплату', proof_processing: 'Надсилання підтвердження', pending_review: 'На перевірці', approved: 'Підтверджено', rejected: 'Відхилено', expired: 'Час минув' };
-    data.orders.forEach(order => {
-      const row = document.createElement('div'); row.className = 'account-order-row';
-      const top = document.createElement('div'); top.className = 'account-order-top';
-      const id = document.createElement('b'); id.textContent = order.order_id;
-      const state = document.createElement('span'); state.textContent = states[order.status] || order.status;
-      top.append(id, state);
-      const meta = document.createElement('small'); meta.textContent = `${order.plan_name} · ${new Intl.NumberFormat('uk-UA').format(order.amount_uah)} ₴ · ${new Date(order.created_at * 1000).toLocaleDateString('uk-UA')}`;
-      row.append(top, meta);
-      if (order.review_note) { const note = document.createElement('small'); note.className = 'account-order-note'; note.textContent = `Коментар адміністратора: ${order.review_note}`; row.append(note); }
-      holder.append(row);
-    });
   }
-  async function loadAccountOverview() {
-    const token = sessionStorage.getItem(SESSION_KEY) || '';
-    if (!token || !apiBase) return;
-    try { renderAccountOverview(await api('/api/account/overview', {}, token)); }
-    catch { $('#accountPlanMeta').textContent = 'Не вдалося оновити дані акаунта. Спробуй пізніше.'; }
-  }
-
-  function renderGoogleButton() {
-    if (googleInitialized) return true;
-    if (!googleClientId) {
-      $('#googleButton').textContent = 'Вхід через Google тимчасово недоступний.';
-      return false;
-    }
-    if (!window.google?.accounts?.id) return false;
-    googleInitialized = true;
-    window.google.accounts.id.initialize({
-      client_id: googleClientId,
-      callback: async response => {
-        clearStatus();
-        if (!response?.credential) return status('Google не повернув підтвердження. Спробуй ще раз.', true);
-        pendingCredential = response.credential;
-        const button = $('#googleButton');
-        button.classList.add('is-loading');
-        try {
-          const result = await api('/api/auth/google/verify', { credential: pendingCredential });
-          if (result.registered) {
-            $('#loginForm [name="email"]').value = result.email || '';
-            switchMode('login');
-            status('Цей Google-акаунт уже зареєстрований. Увійди за email і паролем.');
-            pendingCredential = '';
-            return;
-          }
-          $('#googleStep').hidden = true;
-          $('#registerForm').hidden = false;
-          $('#verifiedEmail').textContent = result.email;
-          $('#registerForm [name="fullName"]').value = result.name || '';
-          $('#registerForm [name="fullName"]').focus();
-        } catch (error) {
-          pendingCredential = '';
-          status(error.message, true);
-        } finally {
-          button.classList.remove('is-loading');
-        }
-      }
-    });
-    $('#googleButton').replaceChildren();
-    window.google.accounts.id.renderButton($('#googleButton'), {
-      type: 'standard', theme: 'filled_black', size: 'large', text: 'continue_with',
-      shape: 'rectangular', logo_alignment: 'left', locale: 'uk'
-    });
-    return true;
-  }
-  function waitForGoogle(attempt = 0) {
-    if (renderGoogleButton()) return;
-    if (attempt < 40) setTimeout(() => waitForGoogle(attempt + 1), 250);
-  }
-  // Render Google Identity Services only after the registration panel becomes visible.
-
-  $('#changeGoogle')?.addEventListener('click', () => {
-    pendingCredential = '';
-    $('#registerForm').reset();
-    $('#registerForm').hidden = true;
-    $('#googleStep').hidden = false;
-    clearStatus();
-  });
-
-  $('#registerForm')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    if (!form.reportValidity()) return;
-    if (!pendingCredential) return status('Спочатку підтверди Google-акаунт.', true);
-    if (!$('[name=privacyConsent]', form)?.checked) return status('Перед створенням акаунта ознайомся з Політикою конфіденційності.', true);
-    const data = new FormData(form);
-    const fullName = String(data.get('fullName') || '').trim().replace(/\s+/g, ' ');
-    const password = String(data.get('password') || '');
-    const confirmation = String(data.get('passwordConfirm') || '');
-    if (fullName.length < 2) return status('Вкажи повне ім’я.', true);
-    if (password !== confirmation) return status('Паролі не збігаються. Перевір повторне введення.', true);
-    if (password.length < 10) return status('Пароль має містити щонайменше 10 символів.', true);
-    const button = $('button[type="submit"]', form);
-    button.disabled = true;
-    button.innerHTML = 'Захищаємо пароль…';
-    try {
-      const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-      const passwordSalt = toBase64Url(saltBytes);
-      const passwordProof = await derivePasswordProof(password, passwordSalt, PASSWORD_ITERATIONS);
-      const result = await api('/api/auth/register', { credential: pendingCredential, fullName, passwordSalt, passwordProof, privacyConsent: true });
-      pendingCredential = '';
-      finishLogin(result);
-    } catch (error) { status(error.message, true); }
-    finally { button.disabled = false; button.innerHTML = 'Створити акаунт'; }
-  });
-
-  $('#loginForm')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    if (!form.reportValidity()) return;
-    const data = new FormData(form);
-    const button = $('button[type="submit"]', form);
-    button.disabled = true;
-    button.textContent = 'Перевіряємо…';
-    try {
-      const email = String(data.get('email') || '').trim().toLowerCase();
-      const password = String(data.get('password') || '');
-      const challenge = await api('/api/auth/salt', { email });
-      const passwordProof = await derivePasswordProof(password, challenge.salt, Number(challenge.iterations) || PASSWORD_ITERATIONS);
-      const result = await api('/api/auth/login', { email, passwordProof });
-      finishLogin(result);
-    } catch (error) { status(error.message, true); }
-    finally { button.disabled = false; button.innerHTML = 'Увійти'; }
-  });
-
-  $('#logoutButton')?.addEventListener('click', async () => {
-    const token = sessionStorage.getItem(SESSION_KEY) || '';
-    try { if (token) await api('/api/auth/logout', {}, token); } catch { /* Local sign-out still clears this browser session. */ }
-    sessionStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem('ryzor.auth.user.v1');
+  function showAuth() {
     $('#accountPanel').hidden = true;
     $('#authMain').hidden = false;
-    $('#loginForm').reset();
     switchMode('login');
-    status('Ти вийшов з акаунта.');
-  });
-
-  $('#refreshAccount')?.addEventListener('click', loadAccountOverview);
-  $('#exportAccountButton')?.addEventListener('click', async () => {
-    const token = sessionStorage.getItem(SESSION_KEY) || '';
-    const button = $('#exportAccountButton');
-    if (!token) return status('Увійди в акаунт ще раз.', true);
-    button.disabled = true;
-    try {
-      const data = await api('/api/account/export', {}, token);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url; link.download = `ryzor-personal-data-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-      status('Копію твоїх даних підготовлено.');
-    } catch (error) { status(error.message, true); }
-    finally { button.disabled = false; }
-  });
-  $('#deleteAccountButton')?.addEventListener('click', async () => {
-    const token = sessionStorage.getItem(SESSION_KEY) || '';
-    const email = String(sessionStorage.getItem('ryzor.auth.user.v1') ? JSON.parse(sessionStorage.getItem('ryzor.auth.user.v1')).email : '').toLowerCase();
-    if (!token || !email) return status('Увійди в акаунт ще раз.', true);
-    const confirmation = prompt(`Щоб видалити акаунт і пов’язані замовлення, введи email: ${email}`);
-    if (!confirmation) return;
-    if (confirmation.trim().toLowerCase() !== email) return status('Email не збігається. Видалення скасовано.', true);
-    const button = $('#deleteAccountButton'); button.disabled = true;
-    try {
-      const removal = await api('/api/auth/delete', { confirmEmail: email }, token);
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionStorage.removeItem('ryzor.auth.user.v1');
-      $('#accountPanel').hidden = true; $('#authMain').hidden = false; switchMode('login');
-      const failedCopies = Number(removal.telegramCopies?.failed || 0);
-      status(failedCopies ? 'Акаунт і веб-дані видалено. Частину старих повідомлень у Telegram не вдалося видалити автоматично — звернися до адміністратора.' : 'Акаунт і пов’язані замовлення видалено. Незалежні звернення до підтримки можна видалити окремо у відповідному чаті.');
-    } catch (error) { status(error.message, true); }
-    finally { button.disabled = false; }
-  });
-
-  async function restoreSession() {
-    const token = sessionStorage.getItem(SESSION_KEY);
-    if (!token) return;
-    try {
-      const result = await api('/api/auth/me', {}, token);
-      showAccount(result.user);
-      loadAccountOverview();
-    } catch {
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionStorage.removeItem('ryzor.auth.user.v1');
-    }
   }
-  restoreSession();
-  if (!apiBase) status('Вхід тимчасово недоступний. Спробуй пізніше.', true);
+
+  if (!window.isSecureContext || !crypto?.subtle) {
+    status('Для локального захисту пароля відкрий сайт через HTTPS (GitHub Pages) або локальний безпечний сервер.', true);
+  }
+  document.querySelectorAll('[data-mode], [data-switch]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.mode || button.dataset.switch)));
+
+  $('#registerForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    if (!window.isSecureContext || !crypto?.subtle) return status('Реєстрація потребує HTTPS-з’єднання.', true);
+    const data = new FormData(form);
+    const fullName = String(data.get('fullName') || '').trim().replace(/\s+/g, ' ');
+    const email = String(data.get('email') || '').trim().toLowerCase();
+    const password = String(data.get('password') || '');
+    const confirmPassword = String(data.get('passwordConfirm') || '');
+    if (fullName.split(' ').length < 2) return status('Вкажи ім’я та прізвище.', true);
+    if (password.length < 10) return status('Пароль має містити щонайменше 10 символів.', true);
+    if (password !== confirmPassword) return status('Паролі не збігаються.', true);
+    if (!data.get('privacyConsent')) return status('Підтверди ознайомлення з політикою конфіденційності.', true);
+    const button = form.querySelector('button[type="submit"]'); button.disabled = true; button.textContent = 'Створюємо…';
+    try {
+      const existing = accounts();
+      if (existing.some(user => user.email === email)) return status('Акаунт із цією поштою вже існує на цьому пристрої.');
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const saltValue = bytesToBase64(salt);
+      const passwordHash = await hashPassword(password, saltValue);
+      const user = { fullName, email, salt: saltValue, passwordHash, iterations: ITERATIONS, createdAt: Date.now() };
+      existing.push(user); write(ACCOUNT_KEY, existing);
+      localStorage.setItem(SESSION_KEY, email);
+      status('Акаунт створено на цьому пристрої.');
+      showAccount(user);
+      const next = new URLSearchParams(location.search).get('next');
+      if (next && /^payment\.html(?:\?.*)?$/.test(next)) location.href = next;
+    } catch (error) { status('Не вдалося створити локальний акаунт. Перевір налаштування браузера.', true); }
+    finally { button.disabled = false; button.textContent = 'Створити акаунт'; }
+  });
+
+  $('#loginForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const data = new FormData(form);
+    const email = String(data.get('email') || '').trim().toLowerCase();
+    const password = String(data.get('password') || '');
+    const user = accounts().find(item => item.email === email);
+    if (!user) return status('Акаунт із такою поштою не знайдено на цьому пристрої.', true);
+    const button = form.querySelector('button[type="submit"]'); button.disabled = true; button.textContent = 'Перевіряємо…';
+    try {
+      const attempt = await hashPassword(password, user.salt);
+      if (attempt !== user.passwordHash) return status('Неправильна пошта або пароль.', true);
+      localStorage.setItem(SESSION_KEY, email);
+      status('Вхід виконано.'); showAccount(user);
+      const next = new URLSearchParams(location.search).get('next');
+      if (next && /^payment\.html(?:\?.*)?$/.test(next)) location.href = next;
+    } catch { status('Не вдалося перевірити пароль у цьому браузері.', true); }
+    finally { button.disabled = false; button.textContent = 'Увійти'; }
+  });
+
+  $('#logoutButton').addEventListener('click', () => {
+    localStorage.removeItem(SESSION_KEY);
+    $('#loginForm').reset(); showAuth(); status('Ти вийшов з акаунта.');
+  });
+  $('#refreshAccount')?.addEventListener('click', () => {
+    const user = currentUser(); if (user) { showAccount(user); status('Дані оновлено з цього пристрою.'); }
+  });
+  $('#exportAccountButton')?.addEventListener('click', () => {
+    const user = currentUser(); if (!user) return;
+    const tickets = read(TICKET_KEY, []).filter(ticket => ticket.ownerEmail === user.email || ticket.email?.toLowerCase() === user.email);
+    const orders = listOrders(user.email);
+    const blob = new Blob([JSON.stringify({ fullName: user.fullName, email: user.email, createdAt: user.createdAt, tickets, orders }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const link = document.createElement('a');
+    link.href = url; link.download = 'ryzor-local-data.json'; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    status('Файл із локальними даними завантажено.');
+  });
+  $('#deleteAccountButton')?.addEventListener('click', () => {
+    const user = currentUser(); if (!user) return;
+    if (!confirm(`Видалити локальний акаунт ${user.email}, його заявки та звернення з цього браузера?`)) return;
+    write(ACCOUNT_KEY, accounts().filter(item => item.email !== user.email));
+    write(TICKET_KEY, read(TICKET_KEY, []).filter(ticket => ticket.ownerEmail !== user.email && ticket.email?.toLowerCase() !== user.email));
+    write(ORDER_KEY, read(ORDER_KEY, []).filter(order => order.email !== user.email));
+    localStorage.removeItem(SESSION_KEY);
+    $('#loginForm').reset(); showAuth(); status('Локальний акаунт і пов’язані дані видалено.');
+  });
+
+  const user = currentUser();
+  if (user) showAccount(user); else showAuth();
 })();

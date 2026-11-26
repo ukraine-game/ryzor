@@ -1,74 +1,50 @@
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
-  const config = window.RYZOR_CONFIG || {};
-  const paymentConfig = config.payment || {};
-  const apiBase = String(config.apiBase || '').replace(/\/$/, '');
-  const sessionToken = sessionStorage.getItem('ryzor.auth.session.v1') || '';
-  const user = (() => { try { return JSON.parse(sessionStorage.getItem('ryzor.auth.user.v1') || 'null'); } catch { return null; } })();
-  const paymentsEnabled = config.paymentsEnabled === true;
+  const ORDER_KEY = 'ryzor.local.orders.v1';
+  const ACCOUNT_KEY = 'ryzor.local.accounts.v1';
+  const SESSION_KEY = 'ryzor.local.session.v1';
   const plans = {
-    free: { name: 'Безкоштовний', price: 0, duration: 'Безстроково', period: 'назавжди', description: 'Щоб познайомитися з Ryzor та спробувати хмарний формат.' },
-    pro: { name: 'Професійний', price: 199, duration: '30 днів', period: '/ 30 днів', description: 'Для регулярних ігрових сесій та пріоритету.' },
-    unlimited: { name: 'Безлімітний', price: 399, duration: '30 днів', period: '/ 30 днів', description: 'Максимум можливостей у межах доступної інфраструктури.' }
+    free: { name: 'Безкоштовний', price: 0, duration: 'Безстроково', period: 'назавжди', description: 'Для знайомства з Ryzor.' },
+    pro: { name: 'Професійний', price: 199, duration: '30 днів', period: '/ 30 днів', description: 'Для регулярних ігрових сесій.' },
+    unlimited: { name: 'Безлімітний', price: 399, duration: '30 днів', period: '/ 30 днів', description: 'Максимум можливостей у межах доступної послуги.' }
   };
+  const money = value => `${new Intl.NumberFormat('uk-UA').format(value)} ₴`;
+  const read = (key, fallback) => { try { const value = JSON.parse(localStorage.getItem(key) || 'null'); return value ?? fallback; } catch { return fallback; } };
+  const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+  const toast = $('#paymentToast');
+  let toastTimer = null;
   let order = null;
   let selectedFile = null;
-  let secondsRemaining = 0;
-  let expiresAt = 0;
   let timerId = null;
-  let toastId = null;
+  let expiresAt = 0;
+  let secondsRemaining = 0;
   const form = $('#checkoutForm');
   const planSelect = $('#checkoutPlan');
   const fileInput = $('#paymentProof');
   const sendButton = $('#sendPaymentProof');
   const uploadZone = $('#uploadZone');
-  const toast = $('#paymentToast');
-  const money = value => `${new Intl.NumberFormat('uk-UA').format(value)} ₴`;
-  const cardNumber = String(paymentConfig.cardNumber || '').replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
-  const isPaymentConfigured = () => Boolean(paymentsEnabled && cardNumber && paymentConfig.recipient && paymentConfig.bank && apiBase && sessionToken);
-  const notify = message => {
-    toast.textContent = message;
-    toast.classList.add('is-visible');
-    clearTimeout(toastId);
-    toastId = setTimeout(() => toast.classList.remove('is-visible'), 3000);
-  };
-  const setStatus = (node, message, type = 'error') => {
-    node.textContent = message;
-    node.className = `payment-submit-status is-${type}`;
-    node.hidden = false;
-  };
-  async function api(path, body) {
-    if (!apiBase) throw new Error('Оформлення тимчасово недоступне. Спробуй пізніше.');
-    const response = await fetch(`${apiBase}${path}`, {
-      method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-      body: JSON.stringify(body || {})
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.ok !== true) {
-      const detail = String(data.error || '');
-      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
-      throw new Error(internal ? 'Оформлення тимчасово недоступне. Спробуй пізніше.' : (detail || `Помилка запиту (${response.status})`));
-    }
-    return data;
+
+  function notify(message) {
+    toast.textContent = message; toast.classList.add('is-visible');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 3200);
   }
-  async function apiForm(path, data) {
-    const response = await fetch(`${apiBase}${path}`, {
-      method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${sessionToken}` }, body: data
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.ok !== true) {
-      const detail = String(result.error || '');
-      const internal = /(worker|cloudflare|config\.js|власник|адміністратор|не налаштован|не підключено|d1|auth_salt|google_client_id)/i.test(detail);
-      throw new Error(internal ? 'Не вдалося надіслати підтвердження. Спробуй пізніше.' : (detail || `Помилка надсилання (${response.status})`));
-    }
-    return result;
+  function setStatus(node, message, error = true) {
+    node.textContent = message; node.className = `payment-submit-status ${error ? 'is-error' : 'is-success'}`; node.hidden = false;
+  }
+  function currentUser() {
+    const email = String(localStorage.getItem(SESSION_KEY) || '').toLowerCase();
+    const accounts = read(ACCOUNT_KEY, []);
+    return Array.isArray(accounts) ? accounts.find(item => item.email === email) || null : null;
+  }
+  function newSerial() {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const values = crypto.getRandomValues(new Uint8Array(32));
+    return [...values].map(value => alphabet[value % alphabet.length]).join('');
   }
   function updateSummary() {
     const plan = plans[planSelect.value] || plans.pro;
-    $('#checkoutContinue').innerHTML = `${plan.price ? 'До оплати' : 'Подати заявку'} <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>`;
+    $('#checkoutContinue').innerHTML = `${plan.price ? 'До оплати' : 'Оформити'} <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>`;
     $('#summaryPlanName').textContent = plan.name;
     $('#summaryPlanDescription').textContent = plan.description;
     $('#summaryPlanPrice').textContent = money(plan.price);
@@ -76,22 +52,6 @@
     $('#summaryPlanShort').textContent = plan.name;
     $('#summaryPlanDuration').textContent = plan.duration;
     $('#summaryTotal').textContent = money(plan.price);
-    $('#checkoutContinue').disabled = !paymentsEnabled;
-  }
-  function updateRequisites() {
-    $('#bankCardNumber').textContent = cardNumber || '•••• •••• •••• ••••';
-    $('#bankRecipient').textContent = paymentConfig.recipient || 'Буде вказано перед відкриттям оплати';
-    $('#bankName').textContent = paymentConfig.bank || 'Буде вказано перед відкриттям оплати';
-    $('#copyCardValue').textContent = cardNumber || 'Не налаштовано';
-    $('#copyRecipientValue').textContent = paymentConfig.recipient || 'Не налаштовано';
-    $('#copyIbanValue').textContent = paymentConfig.iban || '';
-    $('#ibanRow').hidden = !paymentConfig.iban;
-    const warning = $('#paymentSetupWarning');
-    warning.hidden = isPaymentConfigured();
-    const span = warning.querySelector('span');
-    if (!paymentsEnabled) span.textContent = 'Оплата тимчасово недоступна. Не здійснюй переказ, доки оформлення не буде офіційно відкрито.';
-    else if (!cardNumber || !paymentConfig.recipient || !paymentConfig.bank) span.textContent = 'Оплата тимчасово недоступна. Не здійснюй переказ.';
-    else if (!apiBase || !sessionToken) span.textContent = 'Не вдалося підключити API або акаунт. Увійди ще раз і перевір налаштування.';
   }
   function step(number) {
     document.querySelectorAll('[data-step-indicator]').forEach(node => {
@@ -102,117 +62,110 @@
   }
   function renderTimer() {
     secondsRemaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-    const minutes = Math.floor(secondsRemaining / 60);
-    const seconds = secondsRemaining % 60;
+    const minutes = Math.floor(secondsRemaining / 60), seconds = secondsRemaining % 60;
     $('#paymentTimer').textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     if (secondsRemaining <= 0) {
-      clearInterval(timerId);
-      $('#paymentTimer').classList.add('is-expired');
-      sendButton.disabled = true;
-      setStatus($('#paymentSubmitStatus'), 'Час для оплати завершився. Створи нове замовлення.');
+      clearInterval(timerId); $('#paymentTimer').classList.add('is-expired');
+      setStatus($('#paymentSubmitStatus'), 'Час завершився. Повернись до тарифів і створи нове замовлення.');
     }
     refreshSubmitState();
   }
-  function startTimer(serverExpiresAt) {
-    clearInterval(timerId);
-    expiresAt = Number(serverExpiresAt) * 1000;
-    renderTimer();
-    timerId = setInterval(renderTimer, 1000);
+  function refreshSubmitState() {
+    const plan = order?.planCode ? plans[order.planCode] : null;
+    const fileRequired = Boolean(plan?.price);
+    sendButton.disabled = !order || (fileRequired && secondsRemaining <= 0) || !$('#proofConsent').checked || (fileRequired && !selectedFile);
   }
   function validFile(file) {
-    const allowedMime = /^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime)|application\/pdf|text\/plain)$/i;
-    const allowedExt = /\.(jpe?g|png|webp|mp4|webm|mov|pdf|txt)$/i.test(file.name);
-    return allowedMime.test(file.type) || allowedExt;
+    return /^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime)|application\/pdf)$/i.test(file.type) || /\.(jpe?g|png|webp|mp4|webm|mov|pdf)$/i.test(file.name);
   }
   function showFile(file) {
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) { clearFile(); notify('Максимальний розмір файлу — 20 МБ.'); return; }
-    if (!validFile(file)) { clearFile(); notify('Додай фото, відео, PDF або текстовий документ.'); return; }
+    if (file.size > 20 * 1024 * 1024) { clearFile(); return notify('Максимальний розмір файлу — 20 МБ.'); }
+    if (!validFile(file)) { clearFile(); return notify('Додай фото, відео або PDF.'); }
     selectedFile = file;
     $('#fileName').textContent = file.name;
     $('#fileSize').textContent = `${(file.size / 1048576).toFixed(2)} МБ`;
-    $('#filePreview').hidden = false;
-    uploadZone.hidden = true;
+    $('#filePreview').hidden = false; uploadZone.hidden = true;
     refreshSubmitState();
   }
   function clearFile() {
-    selectedFile = null;
-    fileInput.value = '';
-    $('#filePreview').hidden = true;
-    uploadZone.hidden = false;
-    refreshSubmitState();
+    selectedFile = null; fileInput.value = '';
+    $('#filePreview').hidden = true; uploadZone.hidden = false; refreshSubmitState();
   }
-  function refreshSubmitState() {
-    if (!sendButton) return;
-    const consent = $('#proofConsent')?.checked;
-    sendButton.disabled = !selectedFile || !consent || secondsRemaining <= 0 || !isPaymentConfigured() || !order;
+  function makeTelegramDraft() {
+    return [
+      'Вітаю! Хочу оформити тариф RYZOR.',
+      `Серійний номер: ${order.serial}`,
+      `Тариф: ${order.planName}`,
+      `Сума: ${money(order.amount)}`,
+      `Ім’я: ${order.fullName}`,
+      `Нікнейм: ${order.nickname}`,
+      `Email: ${order.email}`,
+      order.telegram ? `Telegram: ${order.telegram}` : '',
+      $('#paymentComment').value.trim() ? `Коментар: ${$('#paymentComment').value.trim()}` : '',
+      order.amount ? 'Квитанцію прикріплю окремим файлом.' : 'Прошу підказати щодо безкоштовного тарифу.'
+    ].filter(Boolean).join('\n');
   }
-  function showSuccess(title, message) {
+  function showSuccess() {
     clearInterval(timerId);
-    $('#paymentSuccess').querySelector('h2').textContent = title;
-    $('#paymentSuccess').querySelector('p').textContent = message;
-    $('#successOrderId').textContent = order.id;
+    $('#successOrderId').textContent = order.serial;
     $('#checkoutStepOne').hidden = true;
     $('#checkoutStepTwo').hidden = true;
     $('#paymentSuccess').hidden = false;
-    step(3);
+    step(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-  async function createOrder() {
-    const data = new FormData(form);
-    const planCode = String(data.get('plan'));
-    const nickname = String(data.get('nickname') || '').trim();
-    const telegramUsername = String(data.get('telegram') || '').trim();
-    const result = await api('/api/orders/create', { planCode, nickname, telegramUsername, privacyConsent: $('#checkoutPrivacyConsent').checked });
-    order = { id: result.orderId, planCode, plan: plans[planCode], nickname, telegram: telegramUsername, expiresAt: result.expiresAt, status: result.status };
-    return result;
-  }
 
-  if (!sessionToken || !user?.email) {
+  const user = currentUser();
+  if (!user) {
     const next = `payment.html${location.search || ''}`;
     location.replace(`auth.html?next=${encodeURIComponent(next)}`);
     return;
   }
+  $('#checkoutFullName').value = user.fullName;
   $('#checkoutEmail').value = user.email;
-  $('#paymentsDisabledBanner').hidden = paymentsEnabled;
   const params = new URLSearchParams(location.search);
   if (plans[params.get('plan')]) planSelect.value = params.get('plan');
   planSelect.addEventListener('change', updateSummary);
   updateSummary();
-  updateRequisites();
 
-  form.addEventListener('submit', async event => {
+  form.addEventListener('submit', event => {
     event.preventDefault();
     if (!form.reportValidity()) return;
-    if (!paymentsEnabled) {
-      setStatus($('#checkoutStepStatus'), 'Оформлення поки закрите. Не переказуй кошти до офіційного запуску Ryzor.');
-      return;
+    if (!$('#checkoutPrivacyConsent').checked) return setStatus($('#checkoutStepStatus'), 'Підтверди ознайомлення з політикою конфіденційності.');
+    const data = new FormData(form);
+    const planCode = String(data.get('plan'));
+    const plan = plans[planCode];
+    if (!plan) return;
+    order = {
+      serial: newSerial(), planCode, planName: plan.name, amount: plan.price,
+      fullName: String(data.get('fullName')).trim(), nickname: String(data.get('nickname')).trim(),
+      email: String(data.get('email')).trim().toLowerCase(), telegram: String(data.get('telegram') || '').trim(),
+      createdAt: Date.now(), status: 'local'
+    };
+    const stored = read(ORDER_KEY, []);
+    stored.unshift(order); write(ORDER_KEY, stored.slice(0, 30));
+    $('#paymentOrderPlan').textContent = `${plan.name} · ${money(plan.price)}`;
+    $('#paymentAmount').textContent = money(plan.price);
+    $('#paymentSerial').textContent = order.serial;
+    $('#checkoutStepOne').hidden = true;
+    $('#checkoutStepTwo').hidden = false;
+    if (!plan.price) {
+      $('#paymentTimer').textContent = '—';
+      $('#paymentTimer').classList.remove('is-expired');
+      $('#uploadZone').hidden = true;
+      $('.proof-description').textContent = 'Для безкоштовного тарифу квитанція не потрібна. Відкрий чат, щоб узгодити доступ.';
+      $('.proof-consent span').textContent = 'Підтверджую, що ознайомився(-лася) з умовами оформлення безкоштовного тарифу.';
+      $('#proofConsent').checked = true;
+    } else {
+      $('.proof-consent span').textContent = 'Підтверджую, що квитанція стосується цього замовлення та не містить PIN, CVV або повного номера картки.';
+      $('#proofConsent').checked = false;
+      $('#paymentTimer').classList.remove('is-expired');
+      expiresAt = Date.now() + 10 * 60 * 1000;
+      renderTimer(); timerId = setInterval(renderTimer, 1000);
     }
-    const button = $('#checkoutContinue');
-    const oldText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Створюємо замовлення…';
-    try {
-      const result = await createOrder();
-      if (result.status === 'pending_review') {
-        showSuccess('Заявку отримано!', result.adminNotified ? 'Заявку на безкоштовний тариф передано адміністратору. Її статус з’явиться у профілі після оновлення.' : 'Заявку збережено, але сповіщення адміністратору не пройшло. Статус можна перевірити в акаунті.');
-        return;
-      }
-      $('#paymentOrderId').textContent = order.id;
-      $('#paymentOrderPlan').textContent = `${order.plan.name} · ${money(result.amountUah)}`;
-      $('#checkoutStepOne').hidden = true;
-      $('#checkoutStepTwo').hidden = false;
-      updateRequisites();
-      step(2);
-      startTimer(result.expiresAt);
-      refreshSubmitState();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-      setStatus($('#checkoutStepStatus'), error.message);
-    } finally {
-      button.disabled = !paymentsEnabled;
-      button.innerHTML = oldText;
-    }
+    step(2); refreshSubmitState();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
   fileInput.addEventListener('change', () => showFile(fileInput.files?.[0]));
@@ -221,31 +174,27 @@
   ['dragenter', 'dragover'].forEach(type => uploadZone.addEventListener(type, event => { event.preventDefault(); uploadZone.classList.add('is-dragover'); }));
   ['dragleave', 'drop'].forEach(type => uploadZone.addEventListener(type, event => { event.preventDefault(); uploadZone.classList.remove('is-dragover'); }));
   uploadZone.addEventListener('drop', event => { const file = event.dataTransfer?.files?.[0]; if (file) showFile(file); });
-
-  document.querySelectorAll('[data-copy-target]').forEach(button => button.addEventListener('click', async () => {
-    const target = button.dataset.copyTarget;
-    const value = target === 'card' ? cardNumber : target === 'recipient' ? paymentConfig.recipient : paymentConfig.iban;
-    if (!value) return notify('Ці дані поки недоступні.');
-    try { await navigator.clipboard.writeText(value); notify('Скопійовано.'); } catch { notify('Не вдалося скопіювати автоматично.'); }
-  }));
-
-  sendButton.addEventListener('click', async () => {
-    if (!order || !selectedFile || !$('#proofConsent').checked || secondsRemaining <= 0 || !isPaymentConfigured()) return;
-    sendButton.disabled = true;
-    sendButton.textContent = 'Надсилаємо…';
-    try {
-      const payload = new FormData();
-      payload.set('orderId', order.id);
-      payload.set('comment', $('#paymentComment').value.trim());
-      payload.set('attachment', selectedFile, selectedFile.name);
-      payload.set('privacyConsent', 'true');
-      await apiForm('/api/orders/proof', payload);
-      showSuccess('Дякуємо за оплату!', 'Підтвердження отримано й передано адміністратору. Після перевірки статус замовлення та підписка оновляться у твоєму профілі. Це ще не автоматичне підтвердження надходження коштів.');
-    } catch (error) {
-      setStatus($('#paymentSubmitStatus'), error.message);
-      sendButton.innerHTML = 'Надіслати підтвердження <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
-      refreshSubmitState();
-    }
+  $('#copySerial').addEventListener('click', async () => {
+    if (!order?.serial) return;
+    try { await navigator.clipboard.writeText(order.serial); notify('Серійний номер скопійовано.'); }
+    catch { notify('Не вдалося скопіювати. Виділи номер вручну.'); }
   });
+
+  sendButton.addEventListener('click', () => {
+    if (!order || (secondsRemaining <= 0 && order.amount > 0) || !$('#proofConsent').checked || (order.amount > 0 && !selectedFile)) return;
+    const draft = makeTelegramDraft();
+    $('#telegramDraft').value = draft;
+    $('#telegramSuccessLink').href = 'https://t.me/st0fen';
+    window.open('https://t.me/st0fen', '_blank', 'noopener,noreferrer');
+    showSuccess();
+    const copyRequest = navigator.clipboard ? navigator.clipboard.writeText(draft) : Promise.reject(new Error('Clipboard unavailable'));
+    copyRequest.then(() => notify('Текст заявки скопійовано. Встав його в чаті Telegram та додай квитанцію.')).catch(() => notify('Скопіюй текст заявки вручну, потім відкрий Telegram.'));
+  });
+  $('#copyTelegramDraft').addEventListener('click', async () => {
+    const draft = $('#telegramDraft').value;
+    try { await navigator.clipboard.writeText(draft); notify('Текст заявки скопійовано.'); }
+    catch { $('#telegramDraft').focus(); $('#telegramDraft').select(); notify('Виділи текст і скопіюй його вручну.'); }
+  });
+
   $('#paymentYear').textContent = String(new Date().getFullYear());
 })();
