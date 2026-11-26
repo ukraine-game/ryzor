@@ -263,16 +263,16 @@
     { name: 'Grand Mountain Adventure: Wonderlands', app: '1247360' },
     { name: 'Grand Mountain Adventure 2', app: '3605330' },
     { name: 'Euro Truck Simulator 2', app: '227300' },
-    { name: 'Trackmania', app: '2225070' },
     { name: 'City Car Driving', app: '493490' },
-    { name: 'Farming Simulator 25', app: '2300320' },
     { name: 'EA SPORTS FC 26', app: '3405690' },
     { name: 'Supermarket Simulator', app: '2670630' },
     { name: 'Counter-Strike 2', app: '730' },
     { name: 'PowerWash Simulator', app: '1290000' },
     { name: 'Unpacking', app: '1135690' },
     { name: 'Stardew Valley', app: '413150' },
-    { name: 'House Flipper', app: '613100' }
+    { name: 'House Flipper', app: '613100' },
+    { name: 'Hello Neighbor', app: '521890' },
+    { name: 'Terraria', app: '105600' }
   ];
   let activeSuggestionIndex = -1;
   let filteredSuggestions = [];
