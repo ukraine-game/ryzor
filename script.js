@@ -89,13 +89,27 @@
   }));
   search?.addEventListener('input', filterGames);
 
-  // Game details modal. Cloud sessions are not represented as available until streaming is connected.
+  // Game details modal. Registration unlocks the launch button placeholder.
   const modal = $('#gameModal');
   const launchButton = $('#startTelegram');
   function closeGameModal() {
     if (!modal) return;
     modal.hidden = true;
     document.body.classList.remove('modal-open');
+  }
+  function setLaunchState(title, description, signedIn) {
+    const state = $('#launchState');
+    state.replaceChildren();
+    const marker = document.createElement('span');
+    marker.className = `state-marker${signedIn ? ' state-ok' : ''}`;
+    marker.textContent = signedIn ? '✓' : '1';
+    const copy = document.createElement('div');
+    const heading = document.createElement('strong');
+    heading.textContent = title;
+    const detail = document.createElement('p');
+    detail.textContent = description;
+    copy.append(heading, detail);
+    state.append(marker, copy);
   }
   function openGameModal(button) {
     activeGame = {
@@ -107,14 +121,26 @@
     $('#modalGameKind').textContent = activeGame.kind;
     $('#modalGameImage').src = activeGame.image;
     $('#modalGameImage').alt = activeGame.name;
-    $('#launchState').innerHTML = '<span class="state-marker">•</span><div><strong>Незабаром</strong><p>Хмарний запуск цієї гри ще не відкритий.</p></div>';
-    launchButton.disabled = true;
-    launchButton.textContent = 'Скоро';
-    $('#launchHint').textContent = 'Каталог уже доступний для перегляду.';
+    const signedIn = Boolean(getSessionUser());
+    if (signedIn) {
+      setLaunchState('Профіль підтверджено', 'Ти увійшов до RYZOR. Запуск гри стане доступним після підключення ігрових сесій.', true);
+      launchButton.disabled = false;
+      launchButton.textContent = 'Запуск';
+      $('#launchHint').textContent = 'Акаунт активний.';
+    } else {
+      setLaunchState('Потрібна реєстрація', 'Перед запуском гри вам потрібно зареєструватися.', false);
+      launchButton.disabled = false;
+      launchButton.textContent = 'Зареєструватися';
+      $('#launchHint').textContent = 'Створи профіль RYZOR, щоб продовжити.';
+    }
     modal.hidden = false;
     document.body.classList.add('modal-open');
     $('#closeGameModal').focus();
   }
+  launchButton?.addEventListener('click', () => {
+    if (!getSessionUser()) window.location.href = 'auth.html?mode=register';
+    // For signed-in users the "Запуск" button is intentionally a placeholder for a future update.
+  });
   gameCards.forEach(card => $('.game-open', card)?.addEventListener('click', event => openGameModal(event.currentTarget)));
   $('#closeGameModal')?.addEventListener('click', closeGameModal);
   modal?.addEventListener('click', event => { if (event.target === modal) closeGameModal(); });

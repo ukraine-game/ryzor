@@ -84,6 +84,7 @@
     status('Для локального захисту пароля відкрий сайт через HTTPS (GitHub Pages) або локальний безпечний сервер.', true);
   }
   document.querySelectorAll('[data-mode], [data-switch]').forEach(button => button.addEventListener('click', () => switchMode(button.dataset.mode || button.dataset.switch)));
+  if (new URLSearchParams(location.search).get('mode') === 'register') switchMode('register');
 
   $('#registerForm').addEventListener('submit', async event => {
     event.preventDefault();
