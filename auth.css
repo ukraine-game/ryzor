@@ -28,3 +28,5 @@
 @media(max-width:900px){.auth-layout{grid-template-columns:1fr;min-height:0}.auth-aside{min-height:300px;padding:32px;background-size:60%;background-position:right -30px top 24px;order:-1}.auth-card{padding:36px 24px}.auth-footer{flex-direction:column;gap:6px}}
 
 .account-export-button{width:100%;height:48px;margin:14px 0 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink2);font-weight:600;transition:.2s}.account-export-button:hover{border-color:var(--ink);color:var(--red)}.account-export-button:disabled{opacity:.55;cursor:wait}
+
+.notify-consent{margin-top:0;color:var(--mute);font-size:13px;line-height:1.45}.notify-consent input{flex:none;width:18px;height:18px;margin-top:2px;accent-color:var(--red)}.notify-consent span{display:block}

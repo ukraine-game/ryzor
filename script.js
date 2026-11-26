@@ -89,11 +89,17 @@
   }));
   search?.addEventListener('input', filterGames);
 
-  // Game details modal. Registration unlocks the launch button placeholder.
+  // Game details and honest launch-preview flow. No device fingerprinting, telemetry or bot token is used.
   const modal = $('#gameModal');
   const launchButton = $('#startTelegram');
+  let launchPreviewTimer = null;
+  let launchPreviewFrame = null;
   function closeGameModal() {
     if (!modal) return;
+    if (launchPreviewTimer) clearTimeout(launchPreviewTimer);
+    if (launchPreviewFrame) cancelAnimationFrame(launchPreviewFrame);
+    launchPreviewTimer = null;
+    launchPreviewFrame = null;
     modal.hidden = true;
     document.body.classList.remove('modal-open');
   }
@@ -111,7 +117,52 @@
     copy.append(heading, detail);
     state.append(marker, copy);
   }
+  function resetLaunchPreview() {
+    if (launchPreviewTimer) clearTimeout(launchPreviewTimer);
+    if (launchPreviewFrame) cancelAnimationFrame(launchPreviewFrame);
+    launchPreviewTimer = null;
+    launchPreviewFrame = null;
+    const progress = $('#launchProgress');
+    if (progress) progress.hidden = true;
+    const bar = $('#launchProgressBar');
+    if (bar) bar.style.width = '0%';
+    launchButton.disabled = false;
+    launchButton.textContent = getSessionUser() ? 'Запуск' : 'Зареєструватися';
+  }
+  function runLaunchPreview() {
+    // This is intentionally an interface preview until a real cloud host/Steam integration exists.
+    resetLaunchPreview();
+    setLaunchState('Попередній перегляд запуску', 'Показуємо майбутній етап підготовки. Підключення до сервера та перевірка Steam зараз не виконуються.', true);
+    $('#launchHint').textContent = 'Демонстраційний режим — реальна ігрова сесія ще не підключена.';
+    const progress = $('#launchProgress');
+    const progressText = $('#launchProgressText');
+    const progressBar = $('#launchProgressBar');
+    progress.hidden = false;
+    progressText.textContent = 'Перегляд екрана підготовки…';
+    launchButton.disabled = true;
+    launchButton.textContent = 'Підготовка…';
+    const started = performance.now();
+    const duration = 1800;
+    const tick = now => {
+      const ratio = Math.min(1, (now - started) / duration);
+      progressBar.style.width = `${Math.round(ratio * 100)}%`;
+      if (ratio < 1) {
+        launchPreviewFrame = requestAnimationFrame(tick);
+        return;
+      }
+      setLaunchState('Ігровий сервер ще не підключений', 'Steam-профіль не перевірявся, гра не запускалася. Коли буде підключено реальний сервер, тут з’явиться підтверджений статус і запуск сесії.', false);
+      progressText.textContent = 'Попередній перегляд завершено';
+      launchButton.disabled = false;
+      launchButton.textContent = 'Зрозуміло';
+      launchButton.dataset.previewDone = 'true';
+      $('#launchHint').textContent = 'Цей екран поки демонстраційний.';
+      launchPreviewFrame = null;
+    };
+    launchPreviewFrame = requestAnimationFrame(tick);
+  }
   function openGameModal(button) {
+    resetLaunchPreview();
+    launchButton.dataset.previewDone = 'false';
     activeGame = {
       name: button.dataset.game || 'Гра', image: button.dataset.image || '',
       description: button.dataset.description || '', kind: button.dataset.kind || 'GAME'
@@ -123,10 +174,10 @@
     $('#modalGameImage').alt = activeGame.name;
     const signedIn = Boolean(getSessionUser());
     if (signedIn) {
-      setLaunchState('Профіль підтверджено', 'Ти увійшов до RYZOR. Запуск гри стане доступним після підключення ігрових сесій.', true);
+      setLaunchState('Профіль RYZOR активний', 'Ти увійшов до RYZOR. Можна переглянути демонстраційний екран майбутнього запуску.', true);
       launchButton.disabled = false;
       launchButton.textContent = 'Запуск';
-      $('#launchHint').textContent = 'Акаунт активний.';
+      $('#launchHint').textContent = 'Реальний запуск буде доступний після підключення ігрового сервера.';
     } else {
       setLaunchState('Потрібна реєстрація', 'Перед запуском гри вам потрібно зареєструватися.', false);
       launchButton.disabled = false;
@@ -138,8 +189,16 @@
     $('#closeGameModal').focus();
   }
   launchButton?.addEventListener('click', () => {
-    if (!getSessionUser()) window.location.href = 'auth.html?mode=register';
-    // For signed-in users the "Запуск" button is intentionally a placeholder for a future update.
+    if (!getSessionUser()) {
+      window.location.href = 'auth.html?mode=register';
+      return;
+    }
+    if (launchButton.dataset.previewDone === 'true') {
+      closeGameModal();
+      return;
+    }
+    window.RyzorNotify?.notify('game_launch', { game: activeGame?.name || 'Невідома гра' });
+    runLaunchPreview();
   });
   gameCards.forEach(card => $('.game-open', card)?.addEventListener('click', event => openGameModal(event.currentTarget)));
   $('#closeGameModal')?.addEventListener('click', closeGameModal);
@@ -222,8 +281,17 @@
     const tickets = getTickets();
     tickets.unshift(ticket);
     saveTickets(tickets);
+    const notifyConsent = data.get('telegramNotifyConsent') === 'on';
+    window.RyzorNotify?.setConsent(notifyConsent);
+    if (notifyConsent) window.RyzorNotify?.notify('support_ticket', {
+      ticketId: ticket.id,
+      category: ticket.category,
+      game: ticket.game,
+      message: message
+    });
     selectedTicketId = ticket.id;
     form.reset();
+    window.RyzorNotify?.syncConsentControls();
     setSupportStatus('Звернення створено.');
     selectTicket(ticket.id);
     notify('Звернення створено.');

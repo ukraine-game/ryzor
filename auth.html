@@ -12,6 +12,8 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="auth.css">
+  <script src="api-config.js" defer></script>
+  <script src="telegram.js" defer></script>
   <script src="auth.js" defer></script>
 </head>
 <body>
@@ -44,6 +46,7 @@
             <form id="loginForm" class="auth-form">
               <label class="field"><span>Електронна пошта</span><input name="email" type="email" autocomplete="email" placeholder="name@example.com" maxlength="254" required></label>
               <label class="field"><span>Пароль</span><input name="password" type="password" autocomplete="current-password" placeholder="Твій пароль" minlength="10" maxlength="128" required></label>
+              <label class="privacy-consent notify-consent"><input type="checkbox" name="telegramNotifyConsent"><span>Дозволяю надсилати адміністратору короткі сповіщення про мій вхід і подальші дії на сайті. Ім’я, email, пароль та дані пристрою не передаються.</span></label>
               <button class="submit-button" type="submit">Увійти</button>
             </form>
             <p class="switch-note">Ще немає акаунта? <button type="button" class="inline-action" data-switch="register">Створити</button><br><span class="fineprint">Акаунт зберігається лише в цьому браузері. Відновлення пароля не передбачене.</span></p>
@@ -56,6 +59,7 @@
               <label class="field"><span>Повтори пароль</span><input name="passwordConfirm" type="password" autocomplete="new-password" placeholder="Введи пароль ще раз" minlength="10" maxlength="128" required></label>
               <div class="password-rule">Не використовуй пароль від пошти чи інших сервісів.</div>
               <label class="privacy-consent"><input type="checkbox" name="privacyConsent" required><span>Я ознайомився(-лася) з <a href="privacy.html" target="_blank" rel="noopener noreferrer">Політикою конфіденційності</a>.</span></label>
+              <label class="privacy-consent notify-consent"><input type="checkbox" name="telegramNotifyConsent"><span>Дозволяю надсилати адміністратору короткі сповіщення про реєстрацію та подальші дії на сайті. Ім’я, email, пароль та дані пристрою не передаються.</span></label>
               <button class="submit-button" type="submit">Створити акаунт</button>
             </form>
             <p class="switch-note">Вже маєш акаунт? <button type="button" class="inline-action" data-switch="login">Увійти</button></p>

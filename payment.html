@@ -12,6 +12,8 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="payment.css">
+  <script src="api-config.js" defer></script>
+  <script src="telegram.js" defer></script>
   <script src="payment.js" defer></script>
 </head>
 <body class="payment-page">
@@ -31,22 +33,23 @@
         <div class="checkout-card-head"><div><span class="checkout-kicker">Крок 1 з 2</span><h2>Твоє замовлення</h2></div><span class="checkout-head-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16M6 7V4h12v3M6 7v13h12V7M9 11h6M9 15h6"/></svg></span></div>
         <div class="checkout-fields">
           <label class="checkout-field"><span>Нікнейм у Ryzor</span><input name="nickname" id="checkoutNickname" type="text" minlength="2" maxlength="24" placeholder="Player_ua" autocomplete="nickname" required></label>
-          <label class="checkout-field"><span>Тариф</span><select name="plan" id="checkoutPlan" required><option value="free">Безкоштовний — 0 ₴</option><option value="pro" selected>Професійний — 199 ₴ / місяць</option><option value="unlimited">Безлімітний — 399 ₴ / місяць</option></select></label>
+          <label class="checkout-field"><span>Тариф</span><select name="plan" id="checkoutPlan" required><option value="free">Безкоштовний — 0 ₴</option><option value="pro" selected>Професійний — 299 ₴ / місяць (−50%)</option><option value="unlimited">Безлімітний — 499 ₴ / місяць (−50%)</option></select></label>
           <input type="hidden" name="fullName" id="checkoutFullName">
           <input type="hidden" name="email" id="checkoutEmail">
         </div>
         <label class="checkout-consent checkout-privacy-consent"><input id="checkoutPrivacyConsent" type="checkbox" required><span>Я ознайомився(-лася) з <a href="privacy.html" target="_blank" rel="noopener noreferrer">Політикою конфіденційності</a>.</span></label>
+        <label class="checkout-consent checkout-privacy-consent"><input id="telegramNotifyConsent" name="telegramNotifyConsent" type="checkbox"><span>Дозволяю надіслати адміністратору Telegram сповіщення про заявку: тариф і серійний код. Ім’я та email не передаються.</span></label>
         <button class="checkout-primary" id="checkoutContinue" type="submit">Створити серійний код <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
         <div class="payment-submit-status is-error" id="checkoutStepStatus" role="status" aria-live="polite" hidden></div>
       </form>
       <aside class="order-summary">
         <span class="summary-kicker">Обраний тариф</span>
         <h3 id="summaryPlanName">Професійний</h3><p id="summaryPlanDescription">Для регулярних ігрових сесій.</p>
-        <div class="summary-price"><strong id="summaryPlanPrice">199 ₴</strong><span id="summaryPlanPeriod">/ 30 днів</span></div>
+        <div class="summary-price"><del id="summaryOldPrice" hidden></del><strong id="summaryPlanPrice">299 ₴</strong><span id="summaryPlanPeriod">/ 30 днів</span><em id="summaryDiscount" hidden>−50%</em></div>
         <div class="summary-divider"></div>
         <div class="summary-line"><span>Тариф</span><b id="summaryPlanShort">Професійний</b></div>
         <div class="summary-line"><span>Тривалість</span><b id="summaryPlanDuration">30 днів</b></div>
-        <div class="summary-line summary-total"><span>Вартість</span><b id="summaryTotal">199 ₴</b></div>
+        <div class="summary-line summary-total"><span>Вартість</span><b id="summaryTotal">299 ₴</b></div>
       </aside>
     </section>
 

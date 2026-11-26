@@ -110,6 +110,9 @@
       const user = { fullName, email, salt: saltValue, passwordHash, iterations: ITERATIONS, createdAt: Date.now() };
       existing.push(user); write(ACCOUNT_KEY, existing);
       localStorage.setItem(SESSION_KEY, email);
+      const notifyConsent = data.get('telegramNotifyConsent') === 'on';
+      window.RyzorNotify?.setConsent(notifyConsent);
+      if (notifyConsent) window.RyzorNotify?.notify('account_created');
       status('Акаунт створено на цьому пристрої.');
       showAccount(user);
       const next = new URLSearchParams(location.search).get('next');
@@ -132,6 +135,9 @@
       const attempt = await hashPassword(password, user.salt);
       if (attempt !== user.passwordHash) return status('Неправильна пошта або пароль.', true);
       localStorage.setItem(SESSION_KEY, email);
+      const notifyConsent = data.get('telegramNotifyConsent') === 'on';
+      window.RyzorNotify?.setConsent(notifyConsent);
+      if (notifyConsent) window.RyzorNotify?.notify('login_success');
       status('Вхід виконано.'); showAccount(user);
       const next = new URLSearchParams(location.search).get('next');
       if (next && /^payment\.html(?:\?.*)?$/.test(next)) location.href = next;

@@ -6,8 +6,8 @@
   const SESSION_KEY = 'ryzor.local.session.v1';
   const plans = {
     free: { name: 'Безкоштовний', price: 0, duration: 'Безстроково', period: 'назавжди', description: 'Для знайомства з Ryzor.' },
-    pro: { name: 'Професійний', price: 199, duration: '30 днів', period: '/ 30 днів', description: 'Для регулярних ігрових сесій.' },
-    unlimited: { name: 'Безлімітний', price: 399, duration: '30 днів', period: '/ 30 днів', description: 'Максимум можливостей у межах доступної послуги.' }
+    pro: { name: 'Професійний', price: 299, originalPrice: 599, duration: '30 днів', period: '/ 30 днів', description: 'Для регулярних ігрових сесій.' },
+    unlimited: { name: 'Безлімітний', price: 499, originalPrice: 999, duration: '30 днів', period: '/ 30 днів', description: 'Максимум можливостей у межах доступної послуги.' }
   };
   const money = value => `${new Intl.NumberFormat('uk-UA').format(value)} ₴`;
   const read = (key, fallback) => {
@@ -52,6 +52,17 @@
     $('#summaryPlanDescription').textContent = plan.description;
     $('#summaryPlanPrice').textContent = money(plan.price);
     $('#summaryPlanPeriod').textContent = plan.period;
+    const oldPrice = $('#summaryOldPrice');
+    const discount = $('#summaryDiscount');
+    if (plan.originalPrice) {
+      oldPrice.textContent = money(plan.originalPrice);
+      oldPrice.hidden = false;
+      discount.hidden = false;
+      discount.textContent = '−50%';
+    } else {
+      oldPrice.hidden = true;
+      discount.hidden = true;
+    }
     $('#summaryPlanShort').textContent = plan.name;
     $('#summaryPlanDuration').textContent = plan.duration;
     $('#summaryTotal').textContent = money(plan.price);
@@ -97,6 +108,8 @@
       planCode,
       planName: plan.name,
       amount: plan.price,
+      originalAmount: plan.originalPrice || plan.price,
+      discountPercent: plan.originalPrice ? 50 : 0,
       duration: plan.duration,
       nickname,
       fullName: user.fullName,
@@ -108,6 +121,10 @@
     const stored = read(ORDER_KEY, []);
     stored.unshift(order);
     write(ORDER_KEY, stored.slice(0, 30));
+
+    const notifyConsent = $('#telegramNotifyConsent').checked;
+    window.RyzorNotify?.setConsent(notifyConsent);
+    if (notifyConsent) window.RyzorNotify?.notify('order_created', { plan: planCode, serial: order.serial });
 
     $('#successOrderId').textContent = order.serial;
     $('#successPlanName').textContent = order.planName;
