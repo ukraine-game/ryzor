@@ -268,6 +268,7 @@
     { name: 'Farming Simulator 25', app: '2300320' },
     { name: 'EA SPORTS FC 26', app: '3405690' },
     { name: 'Supermarket Simulator', app: '2670630' },
+    { name: 'Counter-Strike 2', app: '730' },
     { name: 'PowerWash Simulator', app: '1290000' },
     { name: 'Unpacking', app: '1135690' },
     { name: 'Stardew Valley', app: '413150' },
